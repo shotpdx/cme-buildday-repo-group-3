@@ -65,7 +65,7 @@ def gold_buyside_ab_test_config():
         # Generate dates based on status
         if status == "Draft":
             start_date = (base_date + timedelta(days=random.randint(1, 30))).date()
-            end_date = (start_date + timedelta(days=random.randint(7, 30)))
+            end_date = (base_date + timedelta(days=random.randint(1, 30)) + timedelta(days=random.randint(7, 30))).date()
         elif status == "Running":
             start_date = (base_date - timedelta(days=random.randint(1, 30))).date()
             end_date = (base_date + timedelta(days=random.randint(1, 30))).date()
@@ -74,7 +74,7 @@ def gold_buyside_ab_test_config():
             end_date = (base_date - timedelta(days=random.randint(1, 29))).date()
         else:  # Cancelled
             start_date = (base_date - timedelta(days=random.randint(10, 60))).date()
-            end_date = (start_date + timedelta(days=random.randint(3, 14))).date()
+            end_date = (datetime.combine(start_date, datetime.min.time()) + timedelta(days=random.randint(3, 14))).date()
         
         test_configs.append({
             "ab_test_id": ab_test_id,
