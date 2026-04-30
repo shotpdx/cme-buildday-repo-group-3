@@ -10,7 +10,7 @@ resources:
       # Pipeline libraries - includes all 5 pipeline notebooks
       libraries:
         - glob:
-            include: ../pipelines/**
+            include: ../pipelines/*.py
       
       root_path: ../
       
