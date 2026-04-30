@@ -214,7 +214,28 @@ def gold_buyside_ab_test_variant():
             })
             variant_idx += 1
     
-    # Convert to DataFrame
-    df = spark.createDataFrame(variants)
+    # Convert to DataFrame - with explicit schema to handle empty case
+    if variants:
+        df = spark.createDataFrame(variants)
+    else:
+        # Fallback schema if no variants generated
+        schema = StructType([
+            StructField("variant_id", StringType(), False),
+            StructField("ab_test_id", StringType(), False),
+            StructField("variant_name", StringType(), False),
+            StructField("variant_type", StringType(), False),
+            StructField("creative_asset_id", StringType(), True),
+            StructField("traffic_allocation_pct", IntegerType(), False),
+            StructField("is_canary", BooleanType(), False),
+            StructField("canary_pct", IntegerType(), True),
+            StructField("impressions", IntegerType(), False),
+            StructField("clicks", IntegerType(), False),
+            StructField("conversions", IntegerType(), False),
+            StructField("metric_value", DoubleType(), False),
+            StructField("is_winner", BooleanType(), False),
+            StructField("created_ts", TimestampType(), False),
+            StructField("updated_ts", TimestampType(), False),
+        ])
+        df = spark.createDataFrame([], schema)
     
     return df
