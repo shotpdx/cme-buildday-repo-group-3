@@ -18,10 +18,14 @@ import uuid
 from datetime import datetime
 
 
-@dp.table(name="gold_buyside_identity_graph")
+@dp.table(name="cme_outcomes_uswest.lakefoundry.gold_buyside_identity_graph")
 def gold_buyside_identity_graph():
     """
     Generate identity graph entries for all customers in gold_media_customer_360.
+    
+    Grain: One row per master_id (canonical_id from source table).
+    The source table gold_media_customer_360 already has one row per canonical_id,
+    so the output maintains this grain naturally.
     
     For each customer (master_id = canonical_id), generate:
     - Hashed email ID from existing email
