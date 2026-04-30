@@ -22,7 +22,6 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 import json
 from datetime import datetime, timedelta
 import random
-from pyspark.sql.types import IntegerType
 
 # Get configuration from pipeline settings
 CATALOG = spark.conf.get("catalog", "cme_outcomes_uswest")
@@ -37,12 +36,25 @@ def gold_buyside_generated_creatives():
     Generate synthetic creative assets linked to existing briefs and concepts.
     
     Returns a DataFrame with ~100 generated creatives with valid FK references.
+    Validates source tables are not empty before proceeding.
     """
     
     # Read source tables to get valid FK values
     briefs_df = spark.read.table(f"{SOURCE_CATALOG}.{SOURCE_SCHEMA}.gold_media_creative_briefs")
     concepts_df = spark.read.table(f"{SOURCE_CATALOG}.{SOURCE_SCHEMA}.gold_media_creative_concepts")
     assets_df = spark.read.table(f"{SOURCE_CATALOG}.{SOURCE_SCHEMA}.gold_media_brand_asset_library")
+    
+    # Validate that source tables are not empty
+    briefs_count = briefs_df.count()
+    concepts_count = concepts_df.count()
+    assets_count = assets_df.count()
+    
+    if briefs_count == 0:
+        raise ValueError("Source table gold_media_creative_briefs is empty. Cannot generate creatives without briefs.")
+    if concepts_count == 0:
+        raise ValueError("Source table gold_media_creative_concepts is empty. Cannot generate creatives without concepts.")
+    if assets_count == 0:
+        raise ValueError("Source table gold_media_brand_asset_library is empty. Cannot generate creatives without assets.")
     
     # Extract lists of valid IDs
     brief_ids = [row.brief_id for row in briefs_df.select("brief_id").collect()]
@@ -128,8 +140,9 @@ def gold_buyside_generated_creatives():
             approved_by = None
             approved_ts = None
         
-        # Timestamps
+        # Timestamps - ensure updated_ts >= created_ts
         created_ts = datetime.now() - timedelta(days=random.randint(1, 60))
+        # updated_ts is always >= created_ts by adding 0 to 30 days to created_ts
         updated_ts = created_ts + timedelta(days=random.randint(0, 30))
         
         creatives_data.append({
