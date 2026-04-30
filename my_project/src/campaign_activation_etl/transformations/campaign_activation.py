@@ -165,7 +165,28 @@ def campaign_activation():
         
         activations.append(activation)
     
-    # Convert to Spark DataFrame
-    activations_df = spark.createDataFrame(activations)
+    # Define schema explicitly to avoid type inference issues
+    schema = StructType([
+        StructField("activation_id", StringType(), False),
+        StructField("creative_asset_id", StringType(), False),
+        StructField("line_item_id", StringType(), False),
+        StructField("campaign_id", StringType(), False),
+        StructField("brief_id", StringType(), False),
+        StructField("destination_platform", StringType(), False),
+        StructField("destination_placement_id", StringType(), False),
+        StructField("trafficking_status", StringType(), False),
+        StructField("activation_ts", TimestampType(), False),
+        StructField("last_sync_ts", TimestampType(), False),
+        StructField("impressions", LongType(), False),
+        StructField("clicks", LongType(), False),
+        StructField("conversions", LongType(), False),
+        StructField("cost", DoubleType(), False),
+        StructField("last_metrics_update_ts", TimestampType(), False),
+        StructField("ab_test_id", StringType(), True),
+        StructField("ab_test_variant_id", StringType(), True),
+    ])
+    
+    # Convert to Spark DataFrame with explicit schema
+    activations_df = spark.createDataFrame(activations, schema=schema)
     
     return activations_df
