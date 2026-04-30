@@ -21,8 +21,13 @@ from pyspark.sql.types import (
     TimestampType, BooleanType, DateType
 )
 from datetime import datetime, timedelta
+from pyspark.errors import AnalysisException
 import random
 import uuid
+
+# Use fixed base timestamp for reproducibility (instead of datetime.now())
+BASE_TIMESTAMP = datetime(2024, 1, 15, 10, 0, 0)
+BASE_DATE = BASE_TIMESTAMP.date()
 
 
 @dp.table(name="cme_outcomes_uswest.lakefoundry.gold_buyside_ab_test_config")
@@ -38,10 +43,31 @@ def gold_buyside_ab_test_config():
     - Confidence thresholds and sample size requirements
     """
     
+    # Explicit schema definition for type safety
+    config_schema = StructType([
+        StructField("ab_test_id", StringType(), False),
+        StructField("test_name", StringType(), False),
+        StructField("test_description", StringType(), False),
+        StructField("brief_id", StringType(), False),
+        StructField("test_type", StringType(), False),
+        StructField("start_date", DateType(), False),
+        StructField("end_date", DateType(), False),
+        StructField("status", StringType(), False),
+        StructField("success_metric", StringType(), False),
+        StructField("confidence_threshold", DoubleType(), False),
+        StructField("min_sample_size", IntegerType(), False),
+        StructField("created_ts", TimestampType(), False),
+        StructField("updated_ts", TimestampType(), False),
+    ])
+    
     # Read source briefs to get valid brief_ids
-    briefs = spark.read.table("cme_outcomes_uswest.media_demo.gold_media_creative_briefs")
-    brief_ids = briefs.select("brief_id").distinct().collect()
-    brief_id_list = [row.brief_id for row in brief_ids]
+    try:
+        briefs = spark.read.table("cme_outcomes_uswest.media_demo.gold_media_creative_briefs")
+        brief_ids = briefs.select("brief_id").distinct().collect()
+        brief_id_list = [row.brief_id for row in brief_ids]
+    except AnalysisException as e:
+        # Fallback: create synthetic brief IDs if table doesn't exist
+        brief_id_list = [f"BRIEF-{i:04d}" for i in range(1, 21)]
     
     if not brief_id_list:
         # Fallback: create synthetic brief IDs if none exist
@@ -53,8 +79,6 @@ def gold_buyside_ab_test_config():
     success_metrics = ["CTR", "Conversion", "ROAS"]
     statuses = ["Draft", "Running", "Completed", "Cancelled"]
     
-    base_date = datetime.now()
-    
     for i in range(10):
         ab_test_id = f"ABTEST-{i+1:04d}"
         test_type = random.choice(test_types)
@@ -64,17 +88,17 @@ def gold_buyside_ab_test_config():
         
         # Generate dates based on status
         if status == "Draft":
-            start_date = (base_date + timedelta(days=random.randint(1, 30))).date()
-            end_date = (base_date + timedelta(days=random.randint(1, 30)) + timedelta(days=random.randint(7, 30))).date()
+            start_date = (BASE_DATE + timedelta(days=random.randint(1, 30)))
+            end_date = (start_date + timedelta(days=random.randint(7, 30)))
         elif status == "Running":
-            start_date = (base_date - timedelta(days=random.randint(1, 30))).date()
-            end_date = (base_date + timedelta(days=random.randint(1, 30))).date()
+            start_date = (BASE_DATE - timedelta(days=random.randint(1, 30)))
+            end_date = (BASE_DATE + timedelta(days=random.randint(1, 30)))
         elif status == "Completed":
-            start_date = (base_date - timedelta(days=random.randint(30, 90))).date()
-            end_date = (base_date - timedelta(days=random.randint(1, 29))).date()
+            start_date = (BASE_DATE - timedelta(days=random.randint(30, 90)))
+            end_date = (BASE_DATE - timedelta(days=random.randint(1, 29)))
         else:  # Cancelled
-            start_date = (base_date - timedelta(days=random.randint(10, 60))).date()
-            end_date = (datetime.combine(start_date, datetime.min.time()) + timedelta(days=random.randint(3, 14))).date()
+            start_date = (BASE_DATE - timedelta(days=random.randint(10, 60)))
+            end_date = (start_date + timedelta(days=random.randint(3, 14)))
         
         test_configs.append({
             "ab_test_id": ab_test_id,
@@ -88,12 +112,12 @@ def gold_buyside_ab_test_config():
             "success_metric": success_metric,
             "confidence_threshold": round(random.uniform(0.90, 0.99), 2),
             "min_sample_size": random.choice([100, 500, 1000, 5000]),
-            "created_ts": datetime.now(),
-            "updated_ts": datetime.now()
+            "created_ts": BASE_TIMESTAMP,
+            "updated_ts": BASE_TIMESTAMP
         })
     
-    # Convert to DataFrame
-    df = spark.createDataFrame(test_configs)
+    # Convert to DataFrame with explicit schema
+    df = spark.createDataFrame(test_configs, schema=config_schema)
     
     return df
 
@@ -111,6 +135,25 @@ def gold_buyside_ab_test_variant():
     - Winner determination
     """
     
+    # Explicit schema definition for type safety
+    variant_schema = StructType([
+        StructField("variant_id", StringType(), False),
+        StructField("ab_test_id", StringType(), False),
+        StructField("variant_name", StringType(), False),
+        StructField("variant_type", StringType(), False),
+        StructField("creative_asset_id", StringType(), True),
+        StructField("traffic_allocation_pct", IntegerType(), False),
+        StructField("is_canary", BooleanType(), False),
+        StructField("canary_pct", IntegerType(), True),  # Nullable IntegerType
+        StructField("impressions", IntegerType(), False),
+        StructField("clicks", IntegerType(), False),
+        StructField("conversions", IntegerType(), False),
+        StructField("metric_value", DoubleType(), False),
+        StructField("is_winner", BooleanType(), False),
+        StructField("created_ts", TimestampType(), False),
+        StructField("updated_ts", TimestampType(), False),
+    ])
+    
     # Read test configs to get test IDs
     test_configs = spark.read.table("cme_outcomes_uswest.lakefoundry.gold_buyside_ab_test_config")
     test_ids = test_configs.select("ab_test_id").collect()
@@ -121,8 +164,8 @@ def gold_buyside_ab_test_variant():
         creatives = spark.read.table("cme_outcomes_uswest.lakefoundry.gold_buyside_generated_creatives")
         creative_ids = creatives.select("creative_asset_id").collect()
         creative_id_list = [row.creative_asset_id for row in creative_ids]
-    except:
-        # Fallback: create synthetic creative IDs
+    except AnalysisException as e:
+        # Fallback: create synthetic creative IDs if table doesn't exist
         creative_id_list = [f"CREATIVE-{i:05d}" for i in range(1, 101)]
     
     variants = []
@@ -136,21 +179,35 @@ def gold_buyside_ab_test_variant():
         control_pct = random.randint(40, 60)
         remaining_pct = 100 - control_pct
         
-        # Split remaining among treatment variants
+        # Split remaining among treatment variants - with safe allocation logic
         treatment_allocations = []
         if num_variants == 2:
             treatment_allocations = [remaining_pct]
         else:
-            # Distribute remaining among treatments
+            # Distribute remaining among treatments safely
             allocations = []
-            for j in range(num_variants - 1):
-                if j == num_variants - 2:
-                    # Last one gets remainder
+            num_treatments = num_variants - 1
+            
+            for j in range(num_treatments):
+                if j == num_treatments - 1:
+                    # Last one gets remainder to ensure sum = 100%
                     allocations.append(remaining_pct - sum(allocations))
                 else:
-                    alloc = random.randint(10, remaining_pct - (num_variants - 2 - j) * 10)
+                    # Calculate safe upper bound: ensure remaining treatments get at least 10% each
+                    remaining_for_future = (num_treatments - 1 - j) * 10
+                    max_alloc = remaining_pct - sum(allocations) - remaining_for_future
+                    
+                    # Ensure max_alloc is at least 10 to avoid negative randint bounds
+                    max_alloc = max(10, max_alloc)
+                    alloc = random.randint(10, max_alloc)
                     allocations.append(alloc)
+            
             treatment_allocations = allocations
+        
+        # Validate traffic allocation sums to 100%
+        total_allocation = control_pct + sum(treatment_allocations)
+        if total_allocation != 100:
+            raise ValueError(f"Traffic allocation for test {test_id} sums to {total_allocation}, expected 100")
         
         # Create control variant
         is_canary = random.random() < 0.3  # 30% chance of canary
@@ -179,8 +236,8 @@ def gold_buyside_ab_test_variant():
             "conversions": control_conversions,
             "metric_value": round(control_clicks / control_impressions if control_impressions > 0 else 0, 4),
             "is_winner": False,
-            "created_ts": datetime.now(),
-            "updated_ts": datetime.now()
+            "created_ts": BASE_TIMESTAMP,
+            "updated_ts": BASE_TIMESTAMP
         })
         variant_idx += 1
         
@@ -209,33 +266,16 @@ def gold_buyside_ab_test_variant():
                 "conversions": treatment_conversions,
                 "metric_value": round(treatment_clicks / treatment_impressions if treatment_impressions > 0 else 0, 4),
                 "is_winner": is_winner,
-                "created_ts": datetime.now(),
-                "updated_ts": datetime.now()
+                "created_ts": BASE_TIMESTAMP,
+                "updated_ts": BASE_TIMESTAMP
             })
             variant_idx += 1
     
-    # Convert to DataFrame - with explicit schema to handle empty case
+    # Convert to DataFrame with explicit schema
     if variants:
-        df = spark.createDataFrame(variants)
+        df = spark.createDataFrame(variants, schema=variant_schema)
     else:
-        # Fallback schema if no variants generated
-        schema = StructType([
-            StructField("variant_id", StringType(), False),
-            StructField("ab_test_id", StringType(), False),
-            StructField("variant_name", StringType(), False),
-            StructField("variant_type", StringType(), False),
-            StructField("creative_asset_id", StringType(), True),
-            StructField("traffic_allocation_pct", IntegerType(), False),
-            StructField("is_canary", BooleanType(), False),
-            StructField("canary_pct", IntegerType(), True),
-            StructField("impressions", IntegerType(), False),
-            StructField("clicks", IntegerType(), False),
-            StructField("conversions", IntegerType(), False),
-            StructField("metric_value", DoubleType(), False),
-            StructField("is_winner", BooleanType(), False),
-            StructField("created_ts", TimestampType(), False),
-            StructField("updated_ts", TimestampType(), False),
-        ])
-        df = spark.createDataFrame([], schema)
+        # Empty DataFrame with explicit schema if no variants generated
+        df = spark.createDataFrame([], schema=variant_schema)
     
     return df

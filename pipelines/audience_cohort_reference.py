@@ -20,7 +20,11 @@ from pyspark.sql.types import (
 from datetime import datetime, timedelta
 import json
 import random
+import logging
 import uuid
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 @dp.table(name="cme_outcomes_uswest.lakefoundry.gold_buyside_audience_cohort")
@@ -39,13 +43,24 @@ def gold_buyside_audience_cohort():
     - Estimated reach, timestamps, and status
     """
     
-    # Read source segments to get valid combinations
-    segments = spark.read.table("cme_outcomes_uswest.media_demo.gold_media_audience_segments")
+    # Set random seed for reproducibility
+    random.seed(42)
     
-    # Get distinct segment combinations
-    segment_combos = segments.select(
-        "primary_segment", "value_segment"
-    ).distinct().collect()
+    # Read source segments to get valid combinations with error handling
+    try:
+        segments = spark.read.table("cme_outcomes_uswest.media_demo.gold_media_audience_segments")
+        logger.info("Successfully read source table: gold_media_audience_segments")
+    except Exception as e:
+        logger.warning(f"Failed to read source table: {e}. Using empty segments list.")
+        segments = None
+    
+    # Get distinct segment combinations or use empty list if source unavailable
+    if segments is not None:
+        segment_combos = segments.select(
+            "primary_segment", "value_segment"
+        ).distinct().collect()
+    else:
+        segment_combos = []
     
     # Create seed cohorts from segment combinations
     cohorts = []
@@ -143,10 +158,10 @@ def gold_buyside_audience_cohort():
         # Status - mostly active, some archived
         status = random.choice(["Active"] * 8 + ["Archived"] * 2)
         
-        # Timestamps
-        created_ts = (base_date - timedelta(days=random.randint(1, 180))).isoformat()
-        updated_ts = (base_date - timedelta(days=random.randint(0, 30))).isoformat()
-        last_refreshed_ts = (base_date - timedelta(days=random.randint(0, 7))).isoformat()
+        # Timestamps - convert to proper datetime objects
+        created_ts = base_date - timedelta(days=random.randint(1, 180))
+        updated_ts = base_date - timedelta(days=random.randint(0, 30))
+        last_refreshed_ts = base_date - timedelta(days=random.randint(0, 7))
         
         cohorts.append({
             "cohort_id": cohort_id,
@@ -231,9 +246,10 @@ def gold_buyside_audience_cohort():
         estimated_reach = random.randint(10000, 1000000)
         status = random.choice(["Active"] * 8 + ["Archived"] * 2)
         
-        created_ts = (base_date - timedelta(days=random.randint(1, 180))).isoformat()
-        updated_ts = (base_date - timedelta(days=random.randint(0, 30))).isoformat()
-        last_refreshed_ts = (base_date - timedelta(days=random.randint(0, 7))).isoformat()
+        # Timestamps - convert to proper datetime objects
+        created_ts = base_date - timedelta(days=random.randint(1, 180))
+        updated_ts = base_date - timedelta(days=random.randint(0, 30))
+        last_refreshed_ts = base_date - timedelta(days=random.randint(0, 7))
         
         cohorts.append({
             "cohort_id": cohort_id,
@@ -253,7 +269,26 @@ def gold_buyside_audience_cohort():
             "status": status
         })
     
-    # Convert to DataFrame
-    df = spark.createDataFrame(cohorts)
+    # Define explicit schema with proper types for all columns
+    schema = StructType([
+        StructField("cohort_id", StringType(), False),
+        StructField("cohort_name", StringType(), False),
+        StructField("cohort_description", StringType(), False),
+        StructField("definition_type", StringType(), False),
+        StructField("definition_value", StringType(), False),
+        StructField("feature_summary_text", StringType(), False),
+        StructField("is_region_allowed", BooleanType(), False),
+        StructField("is_channel_allowed", BooleanType(), False),
+        StructField("is_frequency_capped", BooleanType(), False),
+        StructField("personalization_granularity", StringType(), False),
+        StructField("estimated_reach", IntegerType(), False),
+        StructField("last_refreshed_ts", TimestampType(), False),
+        StructField("created_ts", TimestampType(), False),
+        StructField("updated_ts", TimestampType(), False),
+        StructField("status", StringType(), False)
+    ])
+    
+    # Convert to DataFrame with explicit schema
+    df = spark.createDataFrame(cohorts, schema=schema)
     
     return df
