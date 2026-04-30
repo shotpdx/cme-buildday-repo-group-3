@@ -1,10 +1,22 @@
 # Genie Space Configuration for Buyside Creative Activation
 # 
-# Note: Databricks Genie Spaces are created and managed via the Databricks API
-# (create_or_update_genie tool), not through DAB resource definitions.
+# Databricks Genie Spaces are created via the Databricks API or UI.
+# This file documents the configuration for the Buyside Creative Activation Genie Space.
 #
-# This file documents the configuration that should be created programmatically.
-# See the databricks-genie skill for implementation details.
+# To create this Genie Space:
+# 1. Navigate to Databricks Workspace > SQL > Genie Spaces
+# 2. Click "Create Genie Space"
+# 3. Use the configuration below
+#
+# Or use the Databricks SDK:
+# from databricks.sdk import WorkspaceClient
+# w = WorkspaceClient()
+# w.genie.create(
+#     display_name="Buyside Creative Activation",
+#     table_identifiers=[...],  # See list below
+#     description="...",
+#     sample_questions=[...]
+# )
 
 # Configuration Reference:
 # 
