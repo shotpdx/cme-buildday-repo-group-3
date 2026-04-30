@@ -12,11 +12,15 @@ from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType, TimestampType, BooleanType
 import numpy as np
+import pandas as pd
 from datetime import datetime, timedelta
-import json
+import logging
+
+# Configure logging for pipeline
+logger = logging.getLogger(__name__)
 
 
-@dp.table(name="gold_buyside_campaign_activation")
+@dp.table(name="cme_outcomes_uswest.lakefoundry.gold_buyside_campaign_activation")
 def campaign_activation():
     """
     Campaign Trafficking & Activation table with performance metrics.
@@ -36,8 +40,9 @@ def campaign_activation():
     # Try to read generated creatives if available, otherwise use empty dataframe
     try:
         creatives_df = spark.read.table(f"{catalog}.{schema}.gold_buyside_generated_creatives")
-    except:
+    except Exception as e:
         # If creatives table doesn't exist yet, we'll generate synthetic data
+        logger.warning(f"Generated creatives table not found: {str(e)}. Proceeding with synthetic creative IDs.")
         creatives_df = None
     
     # Collect line items for seeding
@@ -45,6 +50,7 @@ def campaign_activation():
     
     if len(line_items_list) == 0:
         # Return empty dataframe with correct schema if no line items
+        logger.warning("No line items found in source table. Returning empty activation table.")
         return spark.createDataFrame([], schema=_get_activation_schema())
     
     # DSP platforms
@@ -142,9 +148,9 @@ def campaign_activation():
         })
     
     # Convert to Spark DataFrame
-    import pandas as pd
     activations_pdf = pd.DataFrame(activations_data)
     
+    logger.info(f"Generated {len(activations_data)} campaign activations.")
     return spark.createDataFrame(activations_pdf, schema=_get_activation_schema())
 
 
