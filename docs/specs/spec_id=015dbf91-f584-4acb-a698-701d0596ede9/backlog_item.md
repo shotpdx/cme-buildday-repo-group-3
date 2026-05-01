@@ -1,5 +1,7 @@
 # Backlog Item
 
+**Status:** ✅ Implemented
+
 **Title:** Personalized Creative Activation Command Center - Revised Buy Side (MVP)
 
 **Description:**
