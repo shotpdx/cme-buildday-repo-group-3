@@ -12,6 +12,9 @@ import {
   CheckCircle,
   Clock,
 } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 interface MetricCard {
   label: string;
@@ -182,17 +185,15 @@ export default function HomePage() {
               precision. Real-time insights into campaign performance and creative effectiveness.
             </p>
             <div className="flex gap-4 flex-wrap">
-              <Link
-                href="/creatives"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-semibold transition-all hover:shadow-lg hover:shadow-purple-500/50"
-              >
-                Browse Creatives <ArrowRight className="w-4 h-4" />
+              <Link href="/creatives">
+                <Button>
+                  Browse Creatives <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
               </Link>
-              <Link
-                href="/activations"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition-all"
-              >
-                View Activations
+              <Link href="/activations">
+                <Button variant="secondary">
+                  View Activations
+                </Button>
               </Link>
             </div>
           </div>
@@ -215,16 +216,18 @@ export default function HomePage() {
                     '--color-end': 'rgb(236, 72, 153)',
                   } as React.CSSProperties}
                 />
-                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6 hover:border-slate-600/50 transition-all">
-                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${metric.color} p-2.5 mb-4 text-white`}>
-                    {metric.icon}
-                  </div>
-                  <p className="text-slate-400 text-sm mb-2">{metric.label}</p>
-                  <p className="text-3xl font-bold text-white mb-2">{metric.value}</p>
-                  {metric.trend && (
-                    <p className="text-xs text-slate-400">{metric.trend}</p>
-                  )}
-                </div>
+                <Card className="relative hover:border-slate-600/50 transition-all">
+                  <CardContent className="p-6">
+                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${metric.color} p-2.5 mb-4 text-white`}>
+                      {metric.icon}
+                    </div>
+                    <p className="text-slate-400 text-sm mb-2">{metric.label}</p>
+                    <p className="text-3xl font-bold text-white mb-2">{metric.value}</p>
+                    {metric.trend && (
+                      <Badge variant="secondary" className="text-xs">{metric.trend}</Badge>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             ))}
           </div>
@@ -235,30 +238,40 @@ export default function HomePage() {
           <h3 className="text-2xl font-bold mb-8 text-slate-100">Recent Activity</h3>
           <div className="space-y-4">
             {recentActivity.map((activity, index) => (
-              <div
+              <Card
                 key={activity.id}
-                className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-6 hover:border-slate-600/50 transition-all animate-fade-in"
+                className="hover:border-slate-600/50 transition-all animate-fade-in"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
-                <div className="flex items-start gap-4">
-                  <div className="mt-1">
-                    {activity.status === 'completed' && (
-                      <CheckCircle className="w-5 h-5 text-emerald-500" />
-                    )}
-                    {activity.status === 'running' && (
-                      <Activity className="w-5 h-5 text-blue-500 animate-pulse" />
-                    )}
-                    {activity.status === 'pending' && (
-                      <Clock className="w-5 h-5 text-amber-500" />
-                    )}
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="mt-1">
+                      {activity.status === 'completed' && (
+                        <CheckCircle className="w-5 h-5 text-emerald-500" />
+                      )}
+                      {activity.status === 'running' && (
+                        <Activity className="w-5 h-5 text-blue-500 animate-pulse" />
+                      )}
+                      {activity.status === 'pending' && (
+                        <Clock className="w-5 h-5 text-amber-500" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-white mb-1">{activity.title}</h4>
+                      <p className="text-sm text-slate-400 mb-2">{activity.description}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-slate-500">{activity.timestamp}</p>
+                        <Badge 
+                          variant={activity.status === 'completed' ? 'success' : activity.status === 'running' ? 'info' : 'warning'}
+                          className="text-xs"
+                        >
+                          {activity.status}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-white mb-1">{activity.title}</h4>
-                    <p className="text-sm text-slate-400 mb-2">{activity.description}</p>
-                    <p className="text-xs text-slate-500">{activity.timestamp}</p>
-                  </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </section>
@@ -275,12 +288,14 @@ export default function HomePage() {
                 style={{ animationDelay: `${index * 75}ms` }}
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm" />
-                <div className="relative bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-6 hover:border-slate-600/50 transition-all text-center">
-                  <div className="text-3xl mb-3">{link.icon}</div>
-                  <h4 className="font-semibold text-white mb-1">{link.label}</h4>
-                  <p className="text-xs text-slate-400">{link.description}</p>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-200 transition-colors mt-3 mx-auto" />
-                </div>
+                <Card className="relative hover:border-slate-600/50 transition-all text-center h-full">
+                  <CardContent className="p-6 flex flex-col items-center justify-center h-full">
+                    <div className="text-3xl mb-3">{link.icon}</div>
+                    <h4 className="font-semibold text-white mb-1">{link.label}</h4>
+                    <p className="text-xs text-slate-400 mb-3">{link.description}</p>
+                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-200 transition-colors" />
+                  </CardContent>
+                </Card>
               </Link>
             ))}
           </div>
