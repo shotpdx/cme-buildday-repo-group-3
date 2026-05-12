@@ -1,326 +1,170 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
-import {
-  Zap,
-  TrendingUp,
-  Users,
-  Sparkles,
-  ArrowRight,
-  Activity,
-  CheckCircle,
-  Clock,
-} from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 
-interface MetricCard {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  color: string;
-  trend?: string;
-}
+const metrics = [
+  { label: 'Impressions', value: '123,456,789', change: '+0.4%', up: true, period: 'May 5 – May 11' },
+  { label: 'Reach', value: '45,678,123', change: '+2.1%', up: true, period: 'May 5 – May 11' },
+  { label: 'Frequency', value: '2.70', change: '-0.1', up: false, period: 'avg' },
+  { label: 'CTR (All)', value: '0.78%', change: '+0.04pp', up: true, period: 'May 5 – May 11' },
+  { label: 'Conversions', value: '12,345', change: '+8%', up: true, period: 'May 5 – May 11' },
+  { label: 'Spend', value: '$1,234,567', change: '-3%', up: false, period: 'May 5 – May 11' },
+];
 
-interface ActivityItem {
-  id: string;
-  type: 'activation' | 'approval' | 'test';
-  title: string;
-  description: string;
-  timestamp: string;
-  status: 'completed' | 'pending' | 'running';
-}
+const activity = [
+  { label: 'Campaign "Summer Launch 2025" was activated', detail: 'Multi-Channel — US, CA', time: '2m ago', color: 'bg-[var(--success)]' },
+  { label: 'Audience "High Intent Shoppers" updated', detail: 'Segment size changed +12.5%', time: '14m ago', color: 'bg-[var(--accent)]' },
+  { label: 'Creative "SL_15s_Story_A" approved', detail: 'Version 3', time: '1h ago', color: 'bg-[var(--success)]' },
+  { label: 'Budget reallocation completed', detail: '$200,000 moved from Display to Paid Social', time: '2h ago', color: 'bg-[var(--danger)]' },
+  { label: 'Performance alert: CTR below benchmark', detail: 'Campaign "Spring Promo" — Display — US', time: '4h ago', color: 'bg-[var(--warning)]' },
+];
+
+const platforms = [
+  { name: 'Meta (Facebook/Instagram)', spend: '$456,789', pct: 37 },
+  { name: 'Google Ads (Search/YouTube)', spend: '$345,678', pct: 28 },
+  { name: 'The Trade Desk', spend: '$198,765', pct: 16 },
+  { name: 'TikTok', spend: '$135,432', pct: 11 },
+  { name: 'Display (Programmatic)', spend: '$97,903', pct: 8 },
+];
+
+const quickActions = [
+  { href: '/briefs', label: 'Campaign', icon: '◎' },
+  { href: '/audiences', label: 'Audience', icon: '◉' },
+  { href: '/creatives', label: 'Creative', icon: '◈' },
+  { href: '/activations', label: 'Activation', icon: '▸' },
+];
 
 export default function HomePage() {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const metrics: MetricCard[] = [
-    {
-      label: 'Total Generated Creatives',
-      value: '1,247',
-      icon: <Sparkles className="w-6 h-6" />,
-      color: 'from-purple-500 to-pink-500',
-      trend: '+12% this week',
-    },
-    {
-      label: 'Active Campaigns',
-      value: '25',
-      icon: <TrendingUp className="w-6 h-6" />,
-      color: 'from-blue-500 to-cyan-500',
-      trend: '+3 new',
-    },
-    {
-      label: 'A/B Tests Running',
-      value: '5',
-      icon: <Zap className="w-6 h-6" />,
-      color: 'from-amber-500 to-orange-500',
-      trend: '2 completed',
-    },
-    {
-      label: 'Total Audience Reach',
-      value: '500K',
-      icon: <Users className="w-6 h-6" />,
-      color: 'from-emerald-500 to-teal-500',
-      trend: '+45K this month',
-    },
-  ];
-
-  const recentActivity: ActivityItem[] = [
-    {
-      id: '1',
-      type: 'activation',
-      title: 'Summer Campaign Activated',
-      description: 'Launched personalized creative variants across 50K users',
-      timestamp: '2 hours ago',
-      status: 'completed',
-    },
-    {
-      id: '2',
-      type: 'approval',
-      title: 'Creative Brief Approved',
-      description: 'Q3 Product Launch brief approved by marketing team',
-      timestamp: '4 hours ago',
-      status: 'completed',
-    },
-    {
-      id: '3',
-      type: 'test',
-      title: 'A/B Test Running',
-      description: 'Headline variation test - 48h remaining',
-      timestamp: 'Started 1 day ago',
-      status: 'running',
-    },
-    {
-      id: '4',
-      type: 'activation',
-      title: 'Audience Segment Updated',
-      description: 'High-value customer segment refined with new behavioral data',
-      timestamp: '8 hours ago',
-      status: 'completed',
-    },
-  ];
-
-  const navigationLinks = [
-    {
-      href: '/briefs',
-      label: 'Creative Briefs',
-      description: 'Manage campaign briefs',
-      icon: '📋',
-    },
-    {
-      href: '/audiences',
-      label: 'Audience Management',
-      description: 'Define and segment audiences',
-      icon: '👥',
-    },
-    {
-      href: '/creatives',
-      label: 'Creative Assets',
-      description: 'Browse and manage creatives',
-      icon: '🎨',
-    },
-    {
-      href: '/activations',
-      label: 'Campaign Activations',
-      description: 'Launch and monitor campaigns',
-      icon: '🚀',
-    },
-    {
-      href: '/ask',
-      label: 'AI Assistant',
-      description: 'Ask questions about your data',
-      icon: '🤖',
-    },
-  ];
-
-  if (!mounted) {
-    return null;
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-slate-900/80 border-b border-slate-700/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Creative Command Center
-              </h1>
+    <div className="max-w-[1440px] mx-auto px-6 py-8">
+      {/* Page header */}
+      <div className="flex items-end justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">Overview</h1>
+          <p className="text-[12px] text-[var(--text-tertiary)] font-mono">
+            May 12 – May 19, 2025 &nbsp;·&nbsp; All Campaigns &nbsp;·&nbsp; All Channels
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="text-[11px] px-2.5 py-1.5 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+            Filters
+          </button>
+        </div>
+      </div>
+
+      {/* Metrics grid — large numbers like mockup */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-px bg-[var(--border)] border border-[var(--border)] rounded-lg overflow-hidden mb-10">
+        {metrics.map((m, i) => (
+          <div
+            key={m.label}
+            className="bg-[var(--surface)] p-5 animate-slide-up"
+            style={{ animationDelay: `${i * 50}ms` }}
+          >
+            <p className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-3">
+              {m.label}
+            </p>
+            <p className="text-[22px] font-bold font-mono tracking-tight mb-1.5 leading-none">{m.value}</p>
+            <p className={`text-[11px] font-medium font-mono ${m.up ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+              {m.change} <span className="text-[var(--text-tertiary)]">{m.period}</span>
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Activity feed */}
+        <div className="lg:col-span-2">
+          <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+            <div className="px-5 py-3 border-b border-[var(--border)] bg-[var(--bg)] flex items-center justify-between">
+              <h2 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                Recent Activity
+              </h2>
+              <button className="text-[11px] text-[var(--accent)] font-medium hover:underline">View all activity →</button>
             </div>
-            <nav className="hidden md:flex gap-6">
-              {navigationLinks.slice(0, 4).map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="text-sm text-slate-300 hover:text-white transition-colors"
+            <div className="divide-y divide-[var(--border)]">
+              {activity.map((item, i) => (
+                <div
+                  key={i}
+                  className="px-5 py-3.5 flex items-start gap-3 hover:bg-[var(--bg)] transition-colors animate-slide-up"
+                  style={{ animationDelay: `${i * 50}ms` }}
                 >
-                  {link.label}
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${item.color}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] text-[var(--text)] font-medium">{item.label}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">{item.detail}</p>
+                  </div>
+                  <span className="text-[11px] text-[var(--text-tertiary)] font-mono flex-shrink-0">
+                    {item.time}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right column */}
+        <div className="space-y-6">
+          {/* Quick Actions */}
+          <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+            <div className="px-5 py-3 border-b border-[var(--border)] bg-[var(--bg)]">
+              <h2 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                Quick Actions
+              </h2>
+            </div>
+            <div className="grid grid-cols-4 divide-x divide-[var(--border)]">
+              {quickActions.map((action) => (
+                <Link
+                  key={action.href}
+                  href={action.href}
+                  className="flex flex-col items-center justify-center py-5 hover:bg-[var(--bg)] transition-colors group"
+                >
+                  <span className="text-lg mb-1.5 text-[var(--text-tertiary)] group-hover:text-[var(--accent)] transition-colors">
+                    {action.icon}
+                  </span>
+                  <span className="text-[10px] font-medium text-[var(--text-secondary)] group-hover:text-[var(--accent)] transition-colors">
+                    {action.label}
+                  </span>
                 </Link>
               ))}
-            </nav>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Hero Section */}
-        <section className="mb-16 animate-fade-in">
-          <div className="bg-gradient-to-r from-slate-800/50 to-slate-700/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-8 md:p-12">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Welcome to Your Creative Dashboard
-            </h2>
-            <p className="text-lg text-slate-300 mb-8 max-w-2xl">
-              Manage personalized creative activations, run A/B tests, and reach your audience with
-              precision. Real-time insights into campaign performance and creative effectiveness.
-            </p>
-            <div className="flex gap-4 flex-wrap">
-              <Link href="/creatives">
-                <Button>
-                  Browse Creatives <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-              <Link href="/activations">
-                <Button variant="secondary">
-                  View Activations
-                </Button>
-              </Link>
             </div>
           </div>
-        </section>
 
-        {/* Metrics Grid */}
-        <section className="mb-16">
-          <h3 className="text-2xl font-bold mb-8 text-slate-100">Key Metrics</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {metrics.map((metric, index) => (
-              <div
-                key={metric.label}
-                className="group relative animate-fade-in"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-r opacity-0 group-hover:opacity-100 rounded-xl blur-xl transition-opacity duration-300"
-                  style={{
-                    backgroundImage: `linear-gradient(to right, var(--color-start), var(--color-end))`,
-                    '--color-start': 'rgb(168, 85, 247)',
-                    '--color-end': 'rgb(236, 72, 153)',
-                  } as React.CSSProperties}
-                />
-                <Card className="relative hover:border-slate-600/50 transition-all">
-                  <CardContent className="p-6">
-                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${metric.color} p-2.5 mb-4 text-white`}>
-                      {metric.icon}
-                    </div>
-                    <p className="text-slate-400 text-sm mb-2">{metric.label}</p>
-                    <p className="text-3xl font-bold text-white mb-2">{metric.value}</p>
-                    {metric.trend && (
-                      <Badge variant="secondary" className="text-xs">{metric.trend}</Badge>
-                    )}
-                  </CardContent>
-                </Card>
+          {/* Spend by Platform */}
+          <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+            <div className="px-5 py-3 border-b border-[var(--border)] bg-[var(--bg)] flex items-center justify-between">
+              <h2 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                Spend by Platform
+              </h2>
+              <div className="flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
+                <span>Total Spend</span>
+                <span className="font-mono font-semibold text-[var(--text)]">$1,234,567</span>
               </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Recent Activity */}
-        <section className="mb-16">
-          <h3 className="text-2xl font-bold mb-8 text-slate-100">Recent Activity</h3>
-          <div className="space-y-4">
-            {recentActivity.map((activity, index) => (
-              <Card
-                key={activity.id}
-                className="hover:border-slate-600/50 transition-all animate-fade-in"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="mt-1">
-                      {activity.status === 'completed' && (
-                        <CheckCircle className="w-5 h-5 text-emerald-500" />
-                      )}
-                      {activity.status === 'running' && (
-                        <Activity className="w-5 h-5 text-blue-500 animate-pulse" />
-                      )}
-                      {activity.status === 'pending' && (
-                        <Clock className="w-5 h-5 text-amber-500" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-white mb-1">{activity.title}</h4>
-                      <p className="text-sm text-slate-400 mb-2">{activity.description}</p>
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-slate-500">{activity.timestamp}</p>
-                        <Badge 
-                          variant={activity.status === 'completed' ? 'success' : activity.status === 'running' ? 'info' : 'warning'}
-                          className="text-xs"
-                        >
-                          {activity.status}
-                        </Badge>
-                      </div>
-                    </div>
+            </div>
+            <div className="p-5 space-y-4">
+              {platforms.map((p) => (
+                <div key={p.name} className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-[var(--text)]">{p.name}</span>
+                    <span className="text-[11px] font-mono font-medium text-[var(--text)]">{p.spend}</span>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
-
-        {/* Navigation Grid */}
-        <section>
-          <h3 className="text-2xl font-bold mb-8 text-slate-100">Quick Navigation</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {navigationLinks.map((link, index) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="group relative animate-fade-in"
-                style={{ animationDelay: `${index * 75}ms` }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm" />
-                <Card className="relative hover:border-slate-600/50 transition-all text-center h-full">
-                  <CardContent className="p-6 flex flex-col items-center justify-center h-full">
-                    <div className="text-3xl mb-3">{link.icon}</div>
-                    <h4 className="font-semibold text-white mb-1">{link.label}</h4>
-                    <p className="text-xs text-slate-400 mb-3">{link.description}</p>
-                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-200 transition-colors" />
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </section>
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-700/50 mt-20 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-slate-400">
-            <p>&copy; 2024 Creative Activation Command Center. All rights reserved.</p>
-            <div className="flex gap-6">
-              <a href="#" className="hover:text-slate-200 transition-colors">
-                Documentation
-              </a>
-              <a href="#" className="hover:text-slate-200 transition-colors">
-                Support
-              </a>
-              <a href="#" className="hover:text-slate-200 transition-colors">
-                Settings
-              </a>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 bg-[var(--bg)] rounded-sm overflow-hidden">
+                      <div
+                        className="h-full rounded-sm"
+                        style={{ width: `${p.pct}%`, backgroundColor: 'var(--accent)' }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-mono text-[var(--text-tertiary)] w-6 text-right">{p.pct}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-2 border-t border-[var(--border)] bg-[var(--bg)] text-right">
+              <button className="text-[11px] text-[var(--accent)] font-medium hover:underline">View full report →</button>
             </div>
           </div>
         </div>
-      </footer>
+      </div>
     </div>
   );
 }

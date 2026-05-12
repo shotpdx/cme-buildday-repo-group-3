@@ -1,19 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import Link from 'next/link';
-import {
-  ChevronDown,
-  Search,
-  Filter,
-  FileText,
-  Users,
-  Target,
-  Calendar,
-  ExternalLink,
-} from 'lucide-react';
 
-// Mock data structure matching gold_media_creative_briefs
 interface Brief {
   brief_id: string;
   brief_name: string;
@@ -22,433 +10,122 @@ interface Brief {
   target_audience_description: string;
   status: 'Draft' | 'In Review' | 'Approved' | 'Active';
   created_ts: string;
-  concepts_count?: number;
-  creatives_count?: number;
+  concepts_count: number;
+  creatives_count: number;
 }
 
-// Mock data
-const mockBriefs: Brief[] = [
-  {
-    brief_id: 'BRIEF-001',
-    brief_name: 'Summer Campaign 2024',
-    brand_name: 'TechCorp',
-    campaign_objective: 'Increase brand awareness among Gen Z',
-    target_audience_description: 'Ages 18-24, tech enthusiasts, urban dwellers',
-    status: 'Active',
-    created_ts: '2024-01-15T10:00:00Z',
-    concepts_count: 5,
-    creatives_count: 23,
-  },
-  {
-    brief_id: 'BRIEF-002',
-    brief_name: 'Product Launch Q2',
-    brand_name: 'InnovateLabs',
-    campaign_objective: 'Drive product trial and adoption',
-    target_audience_description: 'Early adopters, tech-savvy professionals, ages 25-40',
-    status: 'Approved',
-    created_ts: '2024-01-10T14:30:00Z',
-    concepts_count: 3,
-    creatives_count: 12,
-  },
-  {
-    brief_id: 'BRIEF-003',
-    brief_name: 'Holiday Season Push',
-    brand_name: 'RetailMax',
-    campaign_objective: 'Maximize holiday season sales',
-    target_audience_description: 'Families, gift-givers, ages 30-55',
-    status: 'In Review',
-    created_ts: '2024-01-08T09:15:00Z',
-    concepts_count: 4,
-    creatives_count: 8,
-  },
-  {
-    brief_id: 'BRIEF-004',
-    brief_name: 'Sustainability Initiative',
-    brand_name: 'EcoGreen',
-    campaign_objective: 'Promote eco-friendly product line',
-    target_audience_description: 'Environmentally conscious consumers, ages 25-50',
-    status: 'Draft',
-    created_ts: '2024-01-05T11:45:00Z',
-    concepts_count: 2,
-    creatives_count: 0,
-  },
-  {
-    brief_id: 'BRIEF-005',
-    brief_name: 'B2B Enterprise Solutions',
-    brand_name: 'CloudSync',
-    campaign_objective: 'Acquire enterprise clients',
-    target_audience_description: 'CTOs, IT directors, enterprise decision makers',
-    status: 'Active',
-    created_ts: '2024-01-02T16:20:00Z',
-    concepts_count: 6,
-    creatives_count: 18,
-  },
-  {
-    brief_id: 'BRIEF-006',
-    brief_name: 'Mobile App Promotion',
-    brand_name: 'AppFlow',
-    campaign_objective: 'Increase app downloads and engagement',
-    target_audience_description: 'Mobile-first users, ages 18-35',
-    status: 'Approved',
-    created_ts: '2023-12-28T13:00:00Z',
-    concepts_count: 3,
-    creatives_count: 15,
-  },
+const BRIEFS: Brief[] = [
+  { brief_id: 'BRIEF-001', brief_name: 'Summer Campaign 2024', brand_name: 'TechCorp', campaign_objective: 'Increase brand awareness among Gen Z', target_audience_description: 'Ages 18-24, tech enthusiasts, urban', status: 'Active', created_ts: '2024-01-15', concepts_count: 5, creatives_count: 23 },
+  { brief_id: 'BRIEF-002', brief_name: 'Product Launch Q2', brand_name: 'InnovateLabs', campaign_objective: 'Drive product trial and adoption', target_audience_description: 'Early adopters, professionals 25-40', status: 'Approved', created_ts: '2024-01-10', concepts_count: 3, creatives_count: 12 },
+  { brief_id: 'BRIEF-003', brief_name: 'Holiday Season Push', brand_name: 'RetailMax', campaign_objective: 'Maximize holiday season sales', target_audience_description: 'Families, gift-givers, 30-55', status: 'In Review', created_ts: '2024-01-08', concepts_count: 4, creatives_count: 8 },
+  { brief_id: 'BRIEF-004', brief_name: 'Sustainability Initiative', brand_name: 'EcoGreen', campaign_objective: 'Promote eco-friendly product line', target_audience_description: 'Eco-conscious consumers, 25-50', status: 'Draft', created_ts: '2024-01-05', concepts_count: 2, creatives_count: 0 },
+  { brief_id: 'BRIEF-005', brief_name: 'B2B Enterprise Solutions', brand_name: 'CloudSync', campaign_objective: 'Acquire enterprise clients', target_audience_description: 'CTOs, IT directors, decision makers', status: 'Active', created_ts: '2024-01-02', concepts_count: 6, creatives_count: 18 },
+  { brief_id: 'BRIEF-006', brief_name: 'Mobile App Promotion', brand_name: 'AppFlow', campaign_objective: 'Increase app downloads and engagement', target_audience_description: 'Mobile-first users, 18-35', status: 'Approved', created_ts: '2023-12-28', concepts_count: 3, creatives_count: 15 },
 ];
 
-const statusColors: Record<Brief['status'], string> = {
-  Draft: 'bg-slate-700/50 text-slate-200 border-slate-600',
-  'In Review': 'bg-amber-900/50 text-amber-200 border-amber-700',
-  Approved: 'bg-emerald-900/50 text-emerald-200 border-emerald-700',
-  Active: 'bg-purple-900/50 text-purple-200 border-purple-700',
-};
-
-const statusIcons: Record<Brief['status'], React.ReactNode> = {
-  Draft: '📝',
-  'In Review': '👀',
-  Approved: '✅',
-  Active: '🚀',
+const STATUS_STYLES: Record<Brief['status'], string> = {
+  Draft: 'bg-[var(--bg)] text-[var(--text-secondary)] border-[var(--border)]',
+  'In Review': 'bg-[var(--warning-subtle)] text-[var(--warning)] border-[var(--warning)]/20',
+  Approved: 'bg-[var(--success-subtle)] text-[var(--success)] border-[var(--success)]/20',
+  Active: 'bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--accent)]/20',
 };
 
 export default function BriefsPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatuses, setSelectedStatuses] = useState<Brief['status'][]>([
-    'Draft',
-    'In Review',
-    'Approved',
-    'Active',
-  ]);
-  const [sortBy, setSortBy] = useState<'created' | 'name'>('created');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Filter and sort briefs
-  const filteredBriefs = useMemo(() => {
-    let filtered = mockBriefs.filter((brief) => {
-      const matchesSearch =
-        brief.brief_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        brief.brand_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        brief.campaign_objective.toLowerCase().includes(searchQuery.toLowerCase());
-
-      const matchesStatus = selectedStatuses.includes(brief.status);
-
+  const filtered = useMemo(() => {
+    return BRIEFS.filter((b) => {
+      const matchesSearch = !search || b.brief_name.toLowerCase().includes(search.toLowerCase()) || b.brand_name.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-
-    // Sort
-    if (sortBy === 'created') {
-      filtered.sort(
-        (a, b) =>
-          new Date(b.created_ts).getTime() - new Date(a.created_ts).getTime()
-      );
-    } else {
-      filtered.sort((a, b) => a.brief_name.localeCompare(b.brief_name));
-    }
-
-    return filtered;
-  }, [searchQuery, selectedStatuses, sortBy]);
-
-  const toggleStatus = (status: Brief['status']) => {
-    setSelectedStatuses((prev) =>
-      prev.includes(status)
-        ? prev.filter((s) => s !== status)
-        : [...prev, status]
-    );
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+  }, [search, statusFilter]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-slate-900/80 border-b border-slate-700/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-                <FileText className="w-6 h-6 text-white" />
-              </div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Creative Briefs
-              </h1>
-            </Link>
-            <Link
-              href="/"
-              className="text-sm text-slate-300 hover:text-white transition-colors"
+    <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight mb-1">Creative Briefs</h1>
+        <p className="text-sm text-[var(--text-secondary)]">Campaign briefs with objectives, audience targeting, and linked assets.</p>
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <input
+          type="text"
+          placeholder="Search by name or brand..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 max-w-xs text-[13px] px-3 py-2 rounded-lg border border-[var(--border)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 bg-[var(--surface)]"
+        />
+        <div className="flex gap-1">
+          {['all', 'Draft', 'In Review', 'Approved', 'Active'].map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-2.5 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
+                statusFilter === s
+                  ? 'bg-[var(--text)] text-white'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg)]'
+              }`}
             >
-              ← Back to Dashboard
-            </Link>
-          </div>
+              {s === 'all' ? 'All' : s}
+            </button>
+          ))}
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Page Title & Description */}
-        <section className="mb-8 animate-fade-in">
-          <h2 className="text-3xl font-bold mb-2">Manage Creative Briefs</h2>
-          <p className="text-slate-400">
-            Browse, filter, and manage your creative campaign briefs. View associated concepts and
-            generated creatives.
-          </p>
-        </section>
-
-        {/* Controls Section */}
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 mb-8 animate-fade-in">
-          {/* Search Bar */}
-          <div className="mb-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search briefs by name, brand, or objective..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Filters & Sort */}
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            {/* Status Filter */}
-            <div className="flex flex-wrap gap-2 items-center">
-              <Filter className="w-5 h-5 text-slate-400" />
-              <span className="text-sm text-slate-400 font-medium">Status:</span>
-              <div className="flex flex-wrap gap-2">
-                {(['Draft', 'In Review', 'Approved', 'Active'] as const).map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => toggleStatus(status)}
-                    className={`px-3 py-1 rounded-full text-sm font-medium transition-all border ${
-                      selectedStatuses.includes(status)
-                        ? statusColors[status]
-                        : 'bg-slate-700/30 text-slate-400 border-slate-600/30 hover:bg-slate-700/50'
-                    }`}
-                  >
-                    {statusIcons[status]} {status}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Sort */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-400">Sort:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as 'created' | 'name')}
-                className="px-3 py-1 bg-slate-700/50 border border-slate-600 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500 transition-all"
-              >
-                <option value="created">Newest First</option>
-                <option value="name">Name (A-Z)</option>
-              </select>
-            </div>
-          </div>
+      {/* Table */}
+      <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
+                <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Brief</th>
+                <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Brand</th>
+                <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Objective</th>
+                <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Audience</th>
+                <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Status</th>
+                <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Concepts</th>
+                <th className="text-right px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Creatives</th>
+                <th className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Created</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {filtered.map((brief, i) => (
+                <tr
+                  key={brief.brief_id}
+                  className="hover:bg-[var(--bg)] transition-colors animate-slide-up cursor-pointer"
+                  style={{ animationDelay: `${i * 40}ms` }}
+                >
+                  <td className="px-4 py-3">
+                    <p className="text-[13px] font-medium">{brief.brief_name}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)] font-mono">{brief.brief_id}</p>
+                  </td>
+                  <td className="px-4 py-3 text-[13px] text-[var(--text-secondary)]">{brief.brand_name}</td>
+                  <td className="px-4 py-3 text-[13px] text-[var(--text-secondary)] max-w-[200px] truncate">{brief.campaign_objective}</td>
+                  <td className="px-4 py-3 text-[12px] text-[var(--text-tertiary)] max-w-[160px] truncate">{brief.target_audience_description}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-medium border ${STATUS_STYLES[brief.status]}`}>
+                      {brief.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right text-[13px] font-mono text-[var(--text-secondary)]">{brief.concepts_count}</td>
+                  <td className="px-4 py-3 text-right text-[13px] font-mono text-[var(--text-secondary)]">{brief.creatives_count}</td>
+                  <td className="px-4 py-3 text-[12px] font-mono text-[var(--text-tertiary)]">{brief.created_ts}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+        {filtered.length === 0 && (
+          <div className="px-4 py-12 text-center text-[13px] text-[var(--text-tertiary)]">No briefs match your filters.</div>
+        )}
+      </div>
 
-        {/* Results Count */}
-        <div className="mb-4 text-sm text-slate-400">
-          Showing <span className="font-semibold text-white">{filteredBriefs.length}</span> of{' '}
-          <span className="font-semibold text-white">{mockBriefs.length}</span> briefs
-        </div>
-
-        {/* Briefs Table */}
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 overflow-hidden animate-fade-in">
-          {filteredBriefs.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-700/50 bg-slate-900/50">
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Brief Name
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Brand
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Objective
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Audience
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Assets
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Created
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBriefs.map((brief, index) => (
-                    <tr
-                      key={brief.brief_id}
-                      className="border-b border-slate-700/30 hover:bg-slate-700/30 transition-colors"
-                      style={{
-                        animation: `fadeIn 0.5s ease-out forwards`,
-                        animationDelay: `${index * 50}ms`,
-                      }}
-                    >
-                      {/* Brief Name */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg flex items-center justify-center">
-                            <FileText className="w-4 h-4 text-purple-400" />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-white">{brief.brief_name}</p>
-                            <p className="text-xs text-slate-400">{brief.brief_id}</p>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Brand */}
-                      <td className="px-6 py-4">
-                        <span className="text-slate-300">{brief.brand_name}</span>
-                      </td>
-
-                      {/* Objective */}
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-slate-300 max-w-xs truncate">
-                          {brief.campaign_objective}
-                        </p>
-                      </td>
-
-                      {/* Audience */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1">
-                          <Users className="w-4 h-4 text-slate-400" />
-                          <p className="text-sm text-slate-300 max-w-xs truncate">
-                            {brief.target_audience_description}
-                          </p>
-                        </div>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border ${
-                            statusColors[brief.status]
-                          }`}
-                        >
-                          {statusIcons[brief.status]} {brief.status}
-                        </span>
-                      </td>
-
-                      {/* Assets Count */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3 text-sm">
-                          <div className="flex items-center gap-1">
-                            <Target className="w-4 h-4 text-slate-400" />
-                            <span className="text-slate-300">{brief.concepts_count}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-slate-500">•</span>
-                            <span className="text-slate-300">{brief.creatives_count}</span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Created Date */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm text-slate-300">
-                            {formatDate(brief.created_ts)}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            href={`/briefs/${brief.brief_id}`}
-                            className="inline-flex items-center gap-1 px-3 py-1 bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 hover:text-purple-200 rounded-lg text-xs font-medium transition-all border border-purple-500/30 hover:border-purple-500/60"
-                          >
-                            View <ExternalLink className="w-3 h-3" />
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="px-6 py-12 text-center">
-              <Search className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-slate-300 mb-2">No briefs found</h3>
-              <p className="text-slate-400">
-                Try adjusting your search or filter criteria to find briefs.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Stats Section */}
-        <section className="mt-12 grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[
-            {
-              label: 'Total Briefs',
-              value: mockBriefs.length,
-              icon: FileText,
-              color: 'from-blue-500 to-cyan-500',
-            },
-            {
-              label: 'Active Campaigns',
-              value: mockBriefs.filter((b) => b.status === 'Active').length,
-              icon: Target,
-              color: 'from-purple-500 to-pink-500',
-            },
-            {
-              label: 'Total Concepts',
-              value: mockBriefs.reduce((sum, b) => sum + (b.concepts_count || 0), 0),
-              icon: ChevronDown,
-              color: 'from-emerald-500 to-teal-500',
-            },
-            {
-              label: 'Total Creatives',
-              value: mockBriefs.reduce((sum, b) => sum + (b.creatives_count || 0), 0),
-              icon: Users,
-              color: 'from-amber-500 to-orange-500',
-            },
-          ].map((stat, index) => {
-            const Icon = stat.icon;
-            return (
-              <div
-                key={stat.label}
-                className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6 animate-fade-in"
-                style={{
-                  animation: `fadeIn 0.5s ease-out forwards`,
-                  animationDelay: `${index * 100}ms`,
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-400 mb-1">{stat.label}</p>
-                    <p className="text-3xl font-bold text-white">{stat.value}</p>
-                  </div>
-                  <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-lg flex items-center justify-center`}>
-                    <Icon className="w-6 h-6 text-white" />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </section>
-      </main>
+      <p className="mt-3 text-[11px] text-[var(--text-tertiary)]">
+        {filtered.length} of {BRIEFS.length} briefs
+      </p>
     </div>
   );
 }
