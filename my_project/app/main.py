@@ -15,7 +15,7 @@ from pydantic import BaseModel
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 
-app = FastAPI(title="Creative Activation Command Center API", version="1.0.0")
+app = FastAPI(title="ApertureIQ Command Center API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -309,6 +309,169 @@ ACTIVITY = [
     {"event": "Budget pacing alert", "detail": "Meta flight is 11 percent ahead of daily plan", "time": "1h ago", "type": "alert"},
 ]
 
+MARKET_REGIONS = [
+    {
+        "id": "west",
+        "name": "West Coast",
+        "short_name": "West",
+        "states": ["CA", "OR", "WA", "NV", "AZ"],
+        "reach": 428000,
+        "spend": 74400,
+        "ctr": 1.34,
+        "conversion_lift": 18.2,
+        "priority": "Scale",
+        "signal": "Sports affinity and annual-plan lookalikes are over-indexing in coastal metros.",
+        "top_audience": "Live Sports Loyalists",
+        "recommended_action": "Increase CTV and paid-social frequency caps for championship-week creative.",
+        "cities": [
+            {"name": "Los Angeles", "state": "CA", "x": 96, "y": 151, "reach": 128000, "ctr": 1.42, "lift": 21},
+            {"name": "San Francisco", "state": "CA", "x": 82, "y": 105, "reach": 94000, "ctr": 1.37, "lift": 17},
+            {"name": "Seattle", "state": "WA", "x": 91, "y": 54, "reach": 76000, "ctr": 1.24, "lift": 14},
+            {"name": "Phoenix", "state": "AZ", "x": 141, "y": 169, "reach": 58000, "ctr": 1.16, "lift": 12},
+        ],
+        "trend": [
+            {"week": "W1", "reach": 310000, "conversions": 510},
+            {"week": "W2", "reach": 348000, "conversions": 598},
+            {"week": "W3", "reach": 391000, "conversions": 670},
+            {"week": "W4", "reach": 428000, "conversions": 762},
+        ],
+        "audience_mix": [
+            {"name": "Sports Loyalists", "value": 38},
+            {"name": "Premium Upgrade", "value": 29},
+            {"name": "Family Co-View", "value": 20},
+            {"name": "Winback", "value": 13},
+        ],
+    },
+    {
+        "id": "central",
+        "name": "Central",
+        "short_name": "Central",
+        "states": ["TX", "OK", "KS", "CO", "MO", "AR", "LA"],
+        "reach": 376000,
+        "spend": 52650,
+        "ctr": 1.08,
+        "conversion_lift": 12.7,
+        "priority": "Optimize",
+        "signal": "Family co-viewing audiences respond to weekend slate messaging.",
+        "top_audience": "Family Co-Viewing",
+        "recommended_action": "Shift display and email creative toward household value bundles.",
+        "cities": [
+            {"name": "Dallas", "state": "TX", "x": 212, "y": 169, "reach": 103000, "ctr": 1.14, "lift": 14},
+            {"name": "Houston", "state": "TX", "x": 219, "y": 196, "reach": 91000, "ctr": 1.06, "lift": 12},
+            {"name": "Denver", "state": "CO", "x": 187, "y": 119, "reach": 72000, "ctr": 1.01, "lift": 9},
+            {"name": "Kansas City", "state": "MO", "x": 246, "y": 129, "reach": 47000, "ctr": 0.95, "lift": 8},
+        ],
+        "trend": [
+            {"week": "W1", "reach": 289000, "conversions": 390},
+            {"week": "W2", "reach": 318000, "conversions": 421},
+            {"week": "W3", "reach": 349000, "conversions": 486},
+            {"week": "W4", "reach": 376000, "conversions": 540},
+        ],
+        "audience_mix": [
+            {"name": "Family Co-View", "value": 34},
+            {"name": "Sports Loyalists", "value": 27},
+            {"name": "Trial Convert", "value": 22},
+            {"name": "Winback", "value": 17},
+        ],
+    },
+    {
+        "id": "midwest",
+        "name": "Midwest",
+        "short_name": "Midwest",
+        "states": ["IL", "MI", "WI", "MN", "IA", "IN", "OH"],
+        "reach": 312000,
+        "spend": 43800,
+        "ctr": 0.97,
+        "conversion_lift": 9.5,
+        "priority": "Test",
+        "signal": "Winback cohorts are sizable, but creative fatigue is rising in paid social.",
+        "top_audience": "Churn Risk: Sports",
+        "recommended_action": "Run offer-led A/B test and suppress high-fatigue households for 72 hours.",
+        "cities": [
+            {"name": "Chicago", "state": "IL", "x": 293, "y": 111, "reach": 112000, "ctr": 1.02, "lift": 11},
+            {"name": "Detroit", "state": "MI", "x": 326, "y": 101, "reach": 64000, "ctr": 0.94, "lift": 8},
+            {"name": "Minneapolis", "state": "MN", "x": 273, "y": 76, "reach": 52000, "ctr": 0.91, "lift": 7},
+            {"name": "Cleveland", "state": "OH", "x": 333, "y": 119, "reach": 39000, "ctr": 0.88, "lift": 6},
+        ],
+        "trend": [
+            {"week": "W1", "reach": 275000, "conversions": 350},
+            {"week": "W2", "reach": 284000, "conversions": 362},
+            {"week": "W3", "reach": 301000, "conversions": 391},
+            {"week": "W4", "reach": 312000, "conversions": 421},
+        ],
+        "audience_mix": [
+            {"name": "Winback", "value": 32},
+            {"name": "Sports Loyalists", "value": 26},
+            {"name": "Family Co-View", "value": 24},
+            {"name": "Premium Upgrade", "value": 18},
+        ],
+    },
+    {
+        "id": "southeast",
+        "name": "Southeast",
+        "short_name": "SE",
+        "states": ["FL", "GA", "NC", "SC", "TN", "AL", "MS"],
+        "reach": 354000,
+        "spend": 49850,
+        "ctr": 1.19,
+        "conversion_lift": 15.4,
+        "priority": "Scale",
+        "signal": "Live sports and family bundles are both beating national CPA targets.",
+        "top_audience": "Live Sports Loyalists",
+        "recommended_action": "Launch localized story creative around weekend live-event reminders.",
+        "cities": [
+            {"name": "Atlanta", "state": "GA", "x": 322, "y": 163, "reach": 96000, "ctr": 1.26, "lift": 17},
+            {"name": "Miami", "state": "FL", "x": 365, "y": 213, "reach": 85000, "ctr": 1.18, "lift": 14},
+            {"name": "Charlotte", "state": "NC", "x": 342, "y": 147, "reach": 61000, "ctr": 1.09, "lift": 12},
+            {"name": "Nashville", "state": "TN", "x": 300, "y": 147, "reach": 43000, "ctr": 1.02, "lift": 10},
+        ],
+        "trend": [
+            {"week": "W1", "reach": 271000, "conversions": 410},
+            {"week": "W2", "reach": 303000, "conversions": 468},
+            {"week": "W3", "reach": 334000, "conversions": 551},
+            {"week": "W4", "reach": 354000, "conversions": 612},
+        ],
+        "audience_mix": [
+            {"name": "Sports Loyalists", "value": 36},
+            {"name": "Family Co-View", "value": 31},
+            {"name": "Trial Convert", "value": 20},
+            {"name": "Winback", "value": 13},
+        ],
+    },
+    {
+        "id": "northeast",
+        "name": "Northeast",
+        "short_name": "NE",
+        "states": ["NY", "NJ", "PA", "MA", "CT", "MD", "VA"],
+        "reach": 401000,
+        "spend": 63500,
+        "ctr": 1.11,
+        "conversion_lift": 13.8,
+        "priority": "Optimize",
+        "signal": "Premium upgrade lookalikes are dense, with high CTV completion rates.",
+        "top_audience": "Premium Upgrade Lookalikes",
+        "recommended_action": "Prioritize annual-plan offer in CTV and retarget with display frequency controls.",
+        "cities": [
+            {"name": "New York", "state": "NY", "x": 371, "y": 104, "reach": 142000, "ctr": 1.17, "lift": 15},
+            {"name": "Boston", "state": "MA", "x": 392, "y": 85, "reach": 68000, "ctr": 1.12, "lift": 13},
+            {"name": "Philadelphia", "state": "PA", "x": 358, "y": 120, "reach": 59000, "ctr": 1.03, "lift": 10},
+            {"name": "Washington", "state": "DC", "x": 352, "y": 134, "reach": 53000, "ctr": 1.08, "lift": 12},
+        ],
+        "trend": [
+            {"week": "W1", "reach": 326000, "conversions": 470},
+            {"week": "W2", "reach": 351000, "conversions": 520},
+            {"week": "W3", "reach": 382000, "conversions": 601},
+            {"week": "W4", "reach": 401000, "conversions": 665},
+        ],
+        "audience_mix": [
+            {"name": "Premium Upgrade", "value": 37},
+            {"name": "Sports Loyalists", "value": 28},
+            {"name": "Winback", "value": 21},
+            {"name": "Family Co-View", "value": 14},
+        ],
+    },
+]
+
 MOCK_RESPONSES = {
     "average ctr": {
         "title": "CTR by audience cohort",
@@ -401,6 +564,11 @@ async def creatives() -> list[dict[str, Any]]:
 @app.get("/api/activations")
 async def activations() -> list[dict[str, Any]]:
     return ACTIVATIONS
+
+
+@app.get("/api/markets")
+async def markets() -> list[dict[str, Any]]:
+    return MARKET_REGIONS
 
 
 @app.post("/api/ask")

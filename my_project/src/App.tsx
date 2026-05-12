@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
+  ArrowRight,
   Bot,
   ChevronDown,
   CircleDollarSign,
@@ -9,7 +10,10 @@ import {
   Gauge,
   Layers3,
   LineChart as LineChartIcon,
+  MapPinned,
+  Maximize2,
   Megaphone,
+  MousePointerClick,
   Palette,
   RadioTower,
   RefreshCw,
@@ -19,8 +23,10 @@ import {
   TrendingUp,
   Users,
   Wand2,
+  X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { geoAlbersUsa, geoPath } from "d3-geo";
 import {
   Area,
   AreaChart,
@@ -43,8 +49,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { feature } from "topojson-client";
+import statesTopology from "us-atlas/states-10m.json";
 
-type View = "overview" | "briefs" | "audiences" | "creatives" | "activations" | "ask";
+type View = "overview" | "briefs" | "audiences" | "creatives" | "activations" | "markets" | "ask";
 
 type Dashboard = {
   totals: {
@@ -123,12 +131,45 @@ type Activation = {
   last_sync_ts: string;
 };
 
+type MarketCity = {
+  name: string;
+  state: string;
+  reach: number;
+  ctr: number;
+  lift: number;
+};
+
+type StateFeature = {
+  id: string;
+  properties: { name: string };
+  geometry: unknown;
+};
+
+type MarketRegion = {
+  id: string;
+  name: string;
+  short_name: string;
+  states: string[];
+  reach: number;
+  spend: number;
+  ctr: number;
+  conversion_lift: number;
+  priority: "Scale" | "Optimize" | "Test";
+  signal: string;
+  top_audience: string;
+  recommended_action: string;
+  cities: MarketCity[];
+  trend: Array<{ week: string; reach: number; conversions: number }>;
+  audience_mix: Array<{ name: string; value: number }>;
+};
+
 type AgencyData = {
   dashboard: Dashboard;
   briefs: Brief[];
   audiences: Audience[];
   creatives: Creative[];
   activations: Activation[];
+  markets: MarketRegion[];
 };
 
 type AskResult = {
@@ -143,15 +184,299 @@ type ChatMessage = {
   result?: AskResult["result"];
 };
 
-const COLORS = ["#0f8b8d", "#e4572e", "#7157d9", "#2e9d62", "#c78a05"];
+type JourneyStep = {
+  id: View;
+  title: string;
+  navLabel: string;
+  description: string;
+  userGoal: string;
+  signal: string;
+  outcome: string;
+  icon: typeof Gauge;
+  color: string;
+};
+
+const COLORS = ["#0f9f95", "#256b8f", "#c7793a", "#5b65d8", "#1f9d72", "#d89a23", "#b65aa6"];
+const ASK_SUGGESTIONS = ["average CTR by audience", "activation status", "creative quality", "campaign ROI"];
+const ARCHITECTURE_ROWS = [
+  {
+    source: ["Campaign Briefs", "Planning / CRM"],
+    stream: ["brief.sync", "strategy"],
+    bronze: ["bronze_briefs", "raw brief payloads"],
+    silver: ["silver_campaigns", "validated objectives"],
+    gold: ["gold_dashboard", "executive KPIs"],
+  },
+  {
+    source: ["Customer 360 Audiences", "CDP / Identity"],
+    stream: ["audience.segments", "cohorts"],
+    bronze: ["bronze_audiences", "raw memberships"],
+    silver: ["silver_cohorts", "reach + match"],
+    gold: ["gold_audience_reach", "activation-ready cohorts"],
+  },
+  {
+    source: ["Creative Assets", "DAM / GenAI"],
+    stream: ["creative.assets", "metadata"],
+    bronze: ["bronze_creatives", "asset records"],
+    silver: ["silver_creative_quality", "approval + scoring"],
+    gold: ["gold_creative_slate", "ready assets"],
+  },
+  {
+    source: ["Media Activations", "Ad platforms"],
+    stream: ["activation.events", "delivery"],
+    bronze: ["bronze_activations", "raw platform logs"],
+    silver: ["silver_delivery", "clean delivery"],
+    gold: ["gold_activation_kpi", "spend + response"],
+  },
+  {
+    source: ["Market Signals", "Geo / spend"],
+    stream: ["market.signals", "regional feed"],
+    bronze: ["bronze_markets", "raw geo signals"],
+    silver: ["silver_geo", "region + metro"],
+    gold: ["gold_market_opportunity", "scale / test / optimize"],
+  },
+];
+const ARCH_SERVING_NODES = [
+  ["SQL Warehouse", "Statement API + governed metrics"],
+  ["Lakebase", "PostgreSQL wire protocol"],
+  ["Genie Space", "Natural-language analytics"],
+  ["FastAPI", "Databricks App API boundary"],
+  ["React", "ApertureIQ command center"],
+];
+const ARCH_TAGS = ["domain=marketing", "sensitivity=internal", "data_classification=pii", "quality=validated", "refresh_cadence=near-real-time"];
+const ARCH_PLATFORM_SERVICES = [
+  ["Asset Bundles", "CI/CD deployment"],
+  ["Serverless Compute", "Pipeline + API runtime"],
+  ["SQL Warehouse", "Serving + BI compute"],
+  ["Secrets", "Credential store"],
+];
+const JOURNEY_STEPS: JourneyStep[] = [
+  {
+    id: "overview",
+    title: "Command overview",
+    navLabel: "Orient",
+    description: "Start with the executive readout: performance, investment mix, quality gates, and active signals.",
+    userGoal: "Understand campaign health before deciding where to inspect next.",
+    signal: "Pulse",
+    outcome: "Shared operating picture",
+    icon: Gauge,
+    color: "#13212d",
+  },
+  {
+    id: "briefs",
+    title: "Brief intake",
+    navLabel: "Brief",
+    description: "Campaign objective, audience intent, budget, and owner align into a launch-ready brief.",
+    userGoal: "Confirm strategy, ownership, budget, and approval readiness.",
+    signal: "Strategy",
+    outcome: "Launch-ready brief",
+    icon: FileText,
+    color: "#256b8f",
+  },
+  {
+    id: "audiences",
+    title: "Audience lens",
+    navLabel: "Audience",
+    description: "Segments are sized, governed, and compared through reach, match rate, and value signals.",
+    userGoal: "Choose the highest-fit audience cohorts and spot governance constraints.",
+    signal: "C360",
+    outcome: "Prioritized audience plan",
+    icon: Users,
+    color: "#0f9f95",
+  },
+  {
+    id: "creatives",
+    title: "Creative scoring",
+    navLabel: "Creative",
+    description: "Generated assets are evaluated for approval status, quality, predicted CTR, and fit.",
+    userGoal: "Identify which creative assets are ready, risky, or worth iterating.",
+    signal: "Quality",
+    outcome: "Approved creative slate",
+    icon: Palette,
+    color: "#5b65d8",
+  },
+  {
+    id: "markets",
+    title: "Market expansion",
+    navLabel: "Market",
+    description: "Geography overlays expose regional opportunity and metro-level media priorities.",
+    userGoal: "Decide where to scale, optimize, or test by region and metro.",
+    signal: "Geo",
+    outcome: "Market action map",
+    icon: MapPinned,
+    color: "#c7793a",
+  },
+  {
+    id: "activations",
+    title: "Activation control",
+    navLabel: "Activate",
+    description: "Platform delivery, spend, conversions, and sync status are monitored in one control layer.",
+    userGoal: "Track live delivery, platform spend, trafficking status, and conversion response.",
+    signal: "Live",
+    outcome: "Controlled media execution",
+    icon: RadioTower,
+    color: "#1f9d72",
+  },
+  {
+    id: "ask",
+    title: "Decision loop",
+    navLabel: "Ask AI",
+    description: "Ask AI turns campaign data into answers, tables, and next-best-action context.",
+    userGoal: "Ask questions, validate assumptions, and translate data into the next move.",
+    signal: "AI",
+    outcome: "Decision support",
+    icon: Bot,
+    color: "#13212d",
+  },
+];
 const NAV_ITEMS: Array<{ id: View; label: string; icon: typeof Gauge }> = [
   { id: "overview", label: "Overview", icon: Gauge },
   { id: "briefs", label: "Briefs", icon: FileText },
   { id: "audiences", label: "Audiences", icon: Users },
   { id: "creatives", label: "Creatives", icon: Palette },
+  { id: "markets", label: "Markets", icon: MapPinned },
   { id: "activations", label: "Activations", icon: RadioTower },
   { id: "ask", label: "Ask AI", icon: Bot },
 ];
+
+const REGION_SHAPES: Record<string, { path: string; label: { x: number; y: number }; color: string }> = {
+  west: {
+    path: "M53 43 L138 56 L154 165 L125 203 L73 181 L48 99 Z",
+    label: { x: 94, y: 125 },
+    color: "#256b8f",
+  },
+  central: {
+    path: "M143 58 L253 62 L276 164 L220 204 L153 166 Z",
+    label: { x: 206, y: 132 },
+    color: "#0f9f95",
+  },
+  midwest: {
+    path: "M246 58 L341 65 L356 136 L281 160 L257 70 Z",
+    label: { x: 305, y: 107 },
+    color: "#5b65d8",
+  },
+  southeast: {
+    path: "M275 145 L358 138 L387 216 L316 226 L229 203 Z",
+    label: { x: 316, y: 184 },
+    color: "#1f9d72",
+  },
+  northeast: {
+    path: "M342 61 L409 52 L420 113 L359 137 L347 108 Z",
+    label: { x: 383, y: 93 },
+    color: "#c7793a",
+  },
+};
+
+const US_GEO = feature(
+  statesTopology as never,
+  (statesTopology as { objects: { states: unknown } }).objects.states as never,
+) as unknown as { features: StateFeature[] };
+
+const STATE_ABBR_BY_NAME: Record<string, string> = {
+  Alabama: "AL",
+  Alaska: "AK",
+  Arizona: "AZ",
+  Arkansas: "AR",
+  California: "CA",
+  Colorado: "CO",
+  Connecticut: "CT",
+  Delaware: "DE",
+  Florida: "FL",
+  Georgia: "GA",
+  Hawaii: "HI",
+  Idaho: "ID",
+  Illinois: "IL",
+  Indiana: "IN",
+  Iowa: "IA",
+  Kansas: "KS",
+  Kentucky: "KY",
+  Louisiana: "LA",
+  Maine: "ME",
+  Maryland: "MD",
+  Massachusetts: "MA",
+  Michigan: "MI",
+  Minnesota: "MN",
+  Mississippi: "MS",
+  Missouri: "MO",
+  Montana: "MT",
+  Nebraska: "NE",
+  Nevada: "NV",
+  "New Hampshire": "NH",
+  "New Jersey": "NJ",
+  "New Mexico": "NM",
+  "New York": "NY",
+  "North Carolina": "NC",
+  "North Dakota": "ND",
+  Ohio: "OH",
+  Oklahoma: "OK",
+  Oregon: "OR",
+  Pennsylvania: "PA",
+  "Rhode Island": "RI",
+  "South Carolina": "SC",
+  "South Dakota": "SD",
+  Tennessee: "TN",
+  Texas: "TX",
+  Utah: "UT",
+  Vermont: "VT",
+  Virginia: "VA",
+  Washington: "WA",
+  "West Virginia": "WV",
+  Wisconsin: "WI",
+  Wyoming: "WY",
+};
+
+const CITY_COORDS: Record<string, [number, number]> = {
+  "Los Angeles": [-118.2437, 34.0522],
+  "San Francisco": [-122.4194, 37.7749],
+  Seattle: [-122.3321, 47.6062],
+  Phoenix: [-112.074, 33.4484],
+  Dallas: [-96.797, 32.7767],
+  Houston: [-95.3698, 29.7604],
+  Denver: [-104.9903, 39.7392],
+  "Kansas City": [-94.5786, 39.0997],
+  Chicago: [-87.6298, 41.8781],
+  Detroit: [-83.0458, 42.3314],
+  Minneapolis: [-93.265, 44.9778],
+  Cleveland: [-81.6944, 41.4993],
+  Atlanta: [-84.388, 33.749],
+  Miami: [-80.1918, 25.7617],
+  Charlotte: [-80.8431, 35.2271],
+  Nashville: [-86.7816, 36.1627],
+  "New York": [-74.006, 40.7128],
+  Boston: [-71.0589, 42.3601],
+  Philadelphia: [-75.1652, 39.9526],
+  Washington: [-77.0369, 38.9072],
+};
+
+const REGION_LABEL_COORDS: Record<string, [number, number]> = {
+  west: [-119.5, 39],
+  central: [-99, 34],
+  midwest: [-89, 43],
+  southeast: [-83, 32],
+  northeast: [-74, 42],
+};
+
+const METRO_LABEL_OFFSETS: Record<string, { dx: number; dy: number; anchor: "start" | "end" }> = {
+  "Los Angeles": { dx: 12, dy: 18, anchor: "start" },
+  "San Francisco": { dx: 12, dy: -13, anchor: "start" },
+  Seattle: { dx: 12, dy: -10, anchor: "start" },
+  Phoenix: { dx: 12, dy: 16, anchor: "start" },
+  Dallas: { dx: 12, dy: -12, anchor: "start" },
+  Houston: { dx: 12, dy: 20, anchor: "start" },
+  Denver: { dx: -16, dy: -14, anchor: "end" },
+  "Kansas City": { dx: 12, dy: 12, anchor: "start" },
+  Chicago: { dx: -16, dy: 10, anchor: "end" },
+  Detroit: { dx: 12, dy: -16, anchor: "start" },
+  Minneapolis: { dx: -16, dy: -12, anchor: "end" },
+  Cleveland: { dx: 12, dy: 20, anchor: "start" },
+  Atlanta: { dx: -16, dy: 18, anchor: "end" },
+  Miami: { dx: -14, dy: 19, anchor: "end" },
+  Charlotte: { dx: 12, dy: -14, anchor: "start" },
+  Nashville: { dx: -16, dy: -14, anchor: "end" },
+  "New York": { dx: 12, dy: 2, anchor: "start" },
+  Boston: { dx: -16, dy: -13, anchor: "end" },
+  Philadelphia: { dx: -16, dy: 11, anchor: "end" },
+  Washington: { dx: 12, dy: 22, anchor: "start" },
+};
 
 let messageSeed = 0;
 
@@ -206,7 +531,7 @@ function statusClass(status: string) {
 }
 
 function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-lg border border-[var(--line)] bg-[var(--panel)] ${className}`}>{children}</section>;
+  return <section className={`brand-panel rounded-lg border border-[var(--line)] bg-[var(--panel)] ${className}`}>{children}</section>;
 }
 
 function SectionHeader({
@@ -245,7 +570,8 @@ function KpiCard({
   return (
     <motion.div
       layout
-      className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"
+      className="brand-kpi rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"
+      style={{ borderTopColor: tone }}
       whileHover={{ y: -2 }}
       transition={{ duration: 0.18 }}
     >
@@ -265,8 +591,174 @@ function StatusPill({ value }: { value: string }) {
   return <span className={`inline-flex rounded-md border px-2 py-1 text-[11px] font-semibold ${statusClass(value)}`}>{value.replace("_", " ")}</span>;
 }
 
+function regionForState(stateName: string, markets: MarketRegion[]) {
+  const abbr = STATE_ABBR_BY_NAME[stateName];
+  return markets.find((market) => market.states.includes(abbr));
+}
+
+function GeographyMarketMap({
+  markets,
+  selected,
+  onSelect,
+}: {
+  markets: MarketRegion[];
+  selected: MarketRegion;
+  onSelect: (regionId: string) => void;
+}) {
+  const projection = useMemo(() => geoAlbersUsa().fitSize([920, 520], US_GEO as never), []);
+  const path = useMemo(() => geoPath(projection), [projection]);
+
+  return (
+    <svg viewBox="0 0 960 560" role="img" aria-label="US geography market map" className="h-auto w-full">
+      <rect x="0" y="0" width="960" height="560" rx="20" fill="#f1f6f9" />
+      <g transform="translate(20 16)">
+        {US_GEO.features.map((state) => {
+          const region = regionForState(state.properties.name, markets);
+          const isActive = region?.id === selected.id;
+          const statePath = path(state as never);
+          if (!statePath) return null;
+          return (
+            <motion.path
+              key={state.id}
+              d={statePath}
+              onClick={() => region && onSelect(region.id)}
+              whileHover={region ? { scale: 1.006 } : undefined}
+              className={region ? "cursor-pointer outline-none" : ""}
+              fill={region ? REGION_SHAPES[region.id]?.color ?? "#0f9f95" : "#e6eef3"}
+              fillOpacity={region ? (isActive ? 0.96 : 0.54) : 0.45}
+              stroke={isActive ? "#111827" : "#ffffff"}
+              strokeWidth={isActive ? 2.2 : 1.1}
+              strokeLinejoin="round"
+            />
+          );
+        })}
+
+        {markets.map((market) => {
+          const coords = REGION_LABEL_COORDS[market.id];
+          const point = coords ? projection(coords) : null;
+          if (!point) return null;
+          const [x, y] = point;
+          const isActive = market.id === selected.id;
+          return (
+            <motion.g
+              key={market.id}
+              onClick={() => onSelect(market.id)}
+              className="cursor-pointer"
+              animate={{ scale: isActive ? 1.08 : 1 }}
+              transition={{ duration: 0.18 }}
+            >
+              <circle cx={x} cy={y - 26} r={isActive ? 28 : 24} fill="#ffffff" stroke={REGION_SHAPES[market.id]?.color} strokeWidth="3" />
+              <text x={x} y={y - 30} textAnchor="middle" className="fill-[#111827] text-[16px] font-extrabold">
+                {market.ctr.toFixed(2)}%
+              </text>
+              <text x={x} y={y - 12} textAnchor="middle" className="fill-[#5f6470] text-[10px] font-bold">
+                CTR
+              </text>
+              <text
+                x={x}
+                y={y + 20}
+                textAnchor="middle"
+                paintOrder="stroke"
+                stroke="#ffffff"
+                strokeWidth="6"
+                className="fill-[#111827] text-[15px] font-extrabold"
+              >
+                {market.short_name}
+              </text>
+              <text
+                x={x}
+                y={y + 37}
+                textAnchor="middle"
+                paintOrder="stroke"
+                stroke="#ffffff"
+                strokeWidth="5"
+                className="fill-[#5f6470] text-[11px] font-bold"
+              >
+                {formatCompact(market.reach)} reach
+              </text>
+            </motion.g>
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+
+function RegionalMetroMap({ market }: { market: MarketRegion }) {
+  const projection = useMemo(() => geoAlbersUsa().fitSize([920, 520], US_GEO as never), []);
+  const path = useMemo(() => geoPath(projection), [projection]);
+  const regionColor = REGION_SHAPES[market.id]?.color ?? "#0f9f95";
+
+  return (
+    <svg viewBox="0 0 960 560" className="h-full w-full" role="img" aria-label={`${market.name} metro geography map`}>
+      <rect x="0" y="0" width="960" height="560" rx="20" fill="#f1f6f9" />
+      <g transform="translate(20 16)">
+        {US_GEO.features.map((state) => {
+          const abbr = STATE_ABBR_BY_NAME[state.properties.name];
+          const inRegion = market.states.includes(abbr);
+          const statePath = path(state as never);
+          if (!statePath) return null;
+          return (
+            <path
+              key={state.id}
+              d={statePath}
+              fill={inRegion ? regionColor : "#e6eef3"}
+              fillOpacity={inRegion ? 0.84 : 0.28}
+              stroke="#ffffff"
+              strokeWidth={inRegion ? 1.8 : 0.8}
+              strokeLinejoin="round"
+            />
+          );
+        })}
+
+        {market.cities.map((city) => {
+          const coords = CITY_COORDS[city.name];
+          const point = coords ? projection(coords) : null;
+          if (!point) return null;
+          const [x, y] = point;
+          const label = METRO_LABEL_OFFSETS[city.name] ?? { dx: 18, dy: 0, anchor: "start" as const };
+          const labelX = x + label.dx * 2.2;
+          const labelY = y + label.dy * 1.5;
+          return (
+            <motion.g key={city.name} initial={{ scale: 0.82, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+              <circle cx={x} cy={y} r={Math.max(14, city.reach / 5200)} fill={regionColor} fillOpacity="0.22" />
+              <line x1={x} y1={y} x2={labelX} y2={labelY - 5} stroke="#667085" strokeWidth="1.4" strokeDasharray="4 4" />
+              <circle cx={x} cy={y} r="7" fill={regionColor} stroke="#ffffff" strokeWidth="3" />
+              <text
+                x={labelX}
+                y={labelY}
+                textAnchor={label.anchor}
+                paintOrder="stroke"
+                stroke="#ffffff"
+                strokeWidth="8"
+                className="fill-[#111827] text-[15px] font-extrabold"
+              >
+                {city.name}
+              </text>
+              <text
+                x={labelX}
+                y={labelY + 18}
+                textAnchor={label.anchor}
+                paintOrder="stroke"
+                stroke="#ffffff"
+                strokeWidth="7"
+                className="fill-[#5f6470] text-[11px] font-bold"
+              >
+                {formatCompact(city.reach)} · {city.ctr.toFixed(2)}% CTR
+              </text>
+            </motion.g>
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+
 function App() {
   const [view, setView] = useState<View>("overview");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [askPanelOpen, setAskPanelOpen] = useState(false);
+  const [architectureOpen, setArchitectureOpen] = useState(false);
   const [data, setData] = useState<AgencyData | null>(null);
   const [error, setError] = useState("");
 
@@ -274,14 +766,15 @@ function App() {
     let ignore = false;
     async function loadData() {
       try {
-        const [dashboard, briefs, audiences, creatives, activations] = await Promise.all([
+        const [dashboard, briefs, audiences, creatives, activations, markets] = await Promise.all([
           fetchJson<Dashboard>("/api/dashboard"),
           fetchJson<Brief[]>("/api/briefs"),
           fetchJson<Audience[]>("/api/audiences"),
           fetchJson<Creative[]>("/api/creatives"),
           fetchJson<Activation[]>("/api/activations"),
+          fetchJson<MarketRegion[]>("/api/markets"),
         ]);
-        if (!ignore) setData({ dashboard, briefs, audiences, creatives, activations });
+        if (!ignore) setData({ dashboard, briefs, audiences, creatives, activations, markets });
       } catch (err) {
         if (!ignore) setError(err instanceof Error ? err.message : "Unable to load app data");
       }
@@ -292,86 +785,134 @@ function App() {
     };
   }, []);
 
+  const activeJourneyView = askPanelOpen ? "ask" : view;
+
+  function navigateJourney(nextView: View) {
+    if (nextView === "ask") {
+      setAskPanelOpen(true);
+      return;
+    }
+    setAskPanelOpen(false);
+    setView(nextView);
+  }
+
   return (
     <div className="min-h-screen bg-[var(--canvas)]">
-      <aside className="fixed left-0 top-0 z-20 hidden h-screen w-[248px] border-r border-[var(--line)] bg-[#17181c] text-white lg:block">
-        <div className="flex h-16 items-center gap-3 border-b border-white/10 px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--teal)]">
+      <motion.aside
+        className={`brand-sidebar fixed left-0 top-0 z-20 hidden h-screen border-r border-white/10 text-white lg:block ${sidebarCollapsed ? "w-[76px]" : "w-[248px]"}`}
+        animate={{ width: sidebarCollapsed ? 76 : 248 }}
+        transition={{ duration: 0.22 }}
+      >
+        <button
+          onClick={() => setSidebarCollapsed((current) => !current)}
+          className="absolute -right-3 top-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-[var(--brand-navy)] text-white/80 shadow-lg shadow-[#0b1f33]/20 transition-colors hover:bg-[var(--brand-navy-soft)] hover:text-white"
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <ArrowRight size={14} className={sidebarCollapsed ? "" : "rotate-180"} />
+        </button>
+
+        <div className={`flex h-16 items-center border-b border-white/10 ${sidebarCollapsed ? "justify-center px-3" : "gap-3 px-5 pr-8"}`}>
+          <div className="brand-mark flex h-9 w-9 items-center justify-center rounded-lg shadow-lg shadow-teal-500/20">
             <Megaphone size={18} />
           </div>
-          <div>
-            <p className="text-[14px] font-bold">Activation Desk</p>
-            <p className="text-[11px] text-white/55">Agency command center</p>
-          </div>
+          {!sidebarCollapsed ? (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[14px] font-bold">ApertureIQ</p>
+              <p className="truncate text-[11px] text-white/60">Marketing intelligence OS</p>
+            </div>
+          ) : null}
         </div>
-        <nav className="space-y-1 px-3 py-4">
+        <nav className={`space-y-1 py-4 ${sidebarCollapsed ? "px-2" : "px-3"}`}>
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = view === item.id;
             return (
               <button
                 key={item.id}
-                onClick={() => setView(item.id)}
-                className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[13px] font-semibold transition-colors ${
-                  active ? "bg-white text-[#17181c]" : "text-white/72 hover:bg-white/10 hover:text-white"
-                }`}
+                onClick={() => navigateJourney(item.id)}
+                title={sidebarCollapsed ? item.label : undefined}
+                className={`flex w-full items-center rounded-md py-2.5 text-left text-[13px] font-semibold transition-colors ${
+                  active ? "bg-[var(--brand-copper)] text-white shadow-lg shadow-amber-900/20" : "text-white/72 hover:bg-white/10 hover:text-white"
+                } ${sidebarCollapsed ? "justify-center px-2" : "gap-3 px-3"}`}
               >
                 <Icon size={17} />
-                {item.label}
+                {!sidebarCollapsed ? item.label : null}
               </button>
             );
           })}
         </nav>
-        <div className="absolute bottom-0 left-0 right-0 border-t border-white/10 p-4">
-          <div className="rounded-lg bg-white/[0.07] p-3">
-            <p className="text-[12px] font-semibold">API status</p>
-            <div className="mt-2 flex items-center gap-2 text-[12px] text-white/70">
-              <span className="h-2 w-2 rounded-full bg-[var(--green)]" />
-              FastAPI live
+        <div className={`absolute bottom-0 left-0 right-0 border-t border-white/10 ${sidebarCollapsed ? "p-2" : "p-4"}`}>
+          {!sidebarCollapsed ? (
+            <div className="rounded-lg border border-white/10 bg-white/[0.08] p-3">
+              <p className="text-[12px] font-semibold">Aperture signal</p>
+              <div className="mt-2 flex items-center gap-2 text-[12px] text-white/70">
+                <span className="h-2 w-2 rounded-full bg-[var(--brand-accent)]" />
+                Decision layer live
+              </div>
             </div>
-          </div>
+          ) : null}
+          <button
+            onClick={() => setArchitectureOpen(true)}
+            title="Architecture"
+            className={`flex w-full items-center rounded-md border border-white/10 bg-white/[0.06] text-left text-[12px] font-semibold text-white/72 transition-colors hover:bg-white/10 hover:text-white ${
+              sidebarCollapsed ? "h-10 justify-center px-2" : "mt-2 justify-between px-3 py-2"
+            }`}
+          >
+            <span className={`inline-flex items-center ${sidebarCollapsed ? "" : "gap-2"}`}>
+              <Layers3 size={14} />
+              {!sidebarCollapsed ? "Architecture" : null}
+            </span>
+            {!sidebarCollapsed ? <ArrowRight size={13} /> : null}
+          </button>
         </div>
-      </aside>
+      </motion.aside>
 
-      <main className="lg:pl-[248px]">
-        <TopBar view={view} onView={setView} />
+      <main className={sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[248px]"}>
+        <TopBar view={view} onView={navigateJourney} onAsk={() => navigateJourney("ask")} />
         <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6">
           {error ? (
             <Panel className="p-6 text-sm text-[var(--red)]">{error}</Panel>
           ) : data ? (
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={view}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.18 }}
-              >
-                {view === "overview" && <Overview data={data} />}
-                {view === "briefs" && <Briefs briefs={data.briefs} />}
-                {view === "audiences" && <Audiences audiences={data.audiences} />}
-                {view === "creatives" && <Creatives creatives={data.creatives} />}
-                {view === "activations" && <Activations activations={data.activations} />}
-                {view === "ask" && <AskDesk />}
-              </motion.div>
-            </AnimatePresence>
+            <div className="space-y-5">
+              <JourneyExperience view={activeJourneyView} onNavigate={navigateJourney} />
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={view}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  {view === "overview" && <Overview data={data} />}
+                  {view === "briefs" && <Briefs briefs={data.briefs} />}
+                  {view === "audiences" && <Audiences audiences={data.audiences} />}
+                  {view === "creatives" && <Creatives creatives={data.creatives} />}
+                  {view === "activations" && <Activations activations={data.activations} />}
+                  {view === "markets" && <Markets markets={data.markets} />}
+                  {view === "ask" && <AskDesk />}
+                </motion.div>
+              </AnimatePresence>
+            </div>
           ) : (
             <LoadingState />
           )}
         </div>
       </main>
+      <AskSidePanel open={askPanelOpen} onClose={() => setAskPanelOpen(false)} />
+      <SolutionArchitecturePanel open={architectureOpen} onClose={() => setArchitectureOpen(false)} />
     </div>
   );
 }
 
-function TopBar({ view, onView }: { view: View; onView: (view: View) => void }) {
+function TopBar({ view, onView, onAsk }: { view: View; onView: (view: View) => void; onAsk: () => void }) {
   const active = NAV_ITEMS.find((item) => item.id === view);
   return (
-    <header className="sticky top-0 z-10 border-b border-[var(--line)] bg-white/88 backdrop-blur">
+    <header className="brand-topbar sticky top-0 z-10 border-b border-[var(--line)] backdrop-blur">
       <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-4 sm:px-6">
         <div>
           <div className="flex items-center gap-2 text-[12px] text-[var(--muted)]">
-            <span>Creative Activation</span>
+            <span>ApertureIQ Command</span>
             <span>/</span>
             <span className="font-semibold text-[var(--ink)]">{active?.label}</span>
           </div>
@@ -388,8 +929,8 @@ function TopBar({ view, onView }: { view: View; onView: (view: View) => void }) 
             Synced 09:40 CT
           </button>
           <button
-            onClick={() => onView("ask")}
-            className="inline-flex items-center gap-2 rounded-md bg-[var(--ink)] px-3 py-2 text-[12px] font-semibold text-white"
+            onClick={onAsk}
+            className="inline-flex items-center gap-2 rounded-md bg-[var(--brand-primary)] px-3 py-2 text-[12px] font-semibold text-white shadow-lg shadow-sky-900/20"
           >
             <Sparkles size={15} />
             Ask AI
@@ -403,9 +944,9 @@ function TopBar({ view, onView }: { view: View; onView: (view: View) => void }) 
           return (
             <button
               key={item.id}
-              onClick={() => onView(item.id)}
+              onClick={() => (item.id === "ask" ? onAsk() : onView(item.id))}
               className={`inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-[12px] font-semibold ${
-                selected ? "bg-[var(--ink)] text-white" : "bg-white text-[var(--muted)]"
+                selected ? "bg-[var(--brand-primary)] text-white" : "bg-white text-[var(--muted)]"
               }`}
             >
               <Icon size={15} />
@@ -428,6 +969,93 @@ function LoadingState() {
   );
 }
 
+function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
+  const activeIndex = Math.max(0, JOURNEY_STEPS.findIndex((step) => step.id === view));
+  const activeStep = JOURNEY_STEPS[activeIndex];
+  const ActiveIcon = activeStep.icon;
+  const optimizationSteps = JOURNEY_STEPS.filter((step) => step.id !== "overview");
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className="border-b border-[var(--line)] bg-[var(--panel-soft)]/55 p-4">
+        <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Campaign journey</p>
+        <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_0.8fr]">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white" style={{ background: activeStep.color }}>
+              <ActiveIcon size={20} />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-[20px] font-bold">{activeStep.title}</h2>
+                <span className="rounded-md bg-white px-2 py-1 font-mono text-[10px] font-semibold uppercase text-[var(--muted)]">
+                  Step {activeIndex + 1}/{JOURNEY_STEPS.length}
+                </span>
+              </div>
+              <p className="mt-2 text-[13px] leading-6 text-[var(--muted)]">{activeStep.userGoal}</p>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-md border border-[var(--line)] bg-white px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase text-[var(--faint)]">Signal</p>
+              <p className="mt-1 text-[12px] font-semibold text-[var(--ink)]">{activeStep.signal}</p>
+            </div>
+            <div className="rounded-md border border-[var(--line)] bg-white px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase text-[var(--faint)]">Outcome</p>
+              <p className="mt-1 text-[12px] font-semibold text-[var(--ink)]">{activeStep.outcome}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white p-4">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Brief to optimization loop</p>
+            <p className="mt-1 text-[13px] leading-6 text-[var(--muted)]">
+              The working loop starts once strategy is defined, then cycles through audience, creative, market, activation, and AI-assisted optimization.
+            </p>
+          </div>
+          <span className="inline-flex w-fit items-center gap-2 rounded-md bg-[var(--panel-soft)] px-3 py-2 text-[12px] font-semibold text-[var(--muted)]">
+            <RefreshCw size={14} />
+            Continuous improvement
+          </span>
+        </div>
+        <div className="thin-scrollbar overflow-x-auto pb-1">
+          <div className="grid min-w-[780px] grid-cols-6 gap-3">
+            {optimizationSteps.map((step, index) => {
+              const Icon = step.icon;
+              const isActive = step.id === view;
+              return (
+                <button
+                  key={step.id}
+                  onClick={() => onNavigate(step.id)}
+                  className={`relative min-h-[136px] rounded-lg border p-3 text-left transition-colors ${
+                    isActive ? "border-[var(--brand-accent)] bg-[var(--panel-soft)] shadow-sm" : "border-[var(--line)] bg-white hover:bg-[var(--panel-soft)]/60"
+                  }`}
+                >
+                  {index < optimizationSteps.length - 1 ? (
+                    <span className="absolute -right-[18px] top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--line)] bg-white text-[var(--muted)] lg:flex">
+                      <ArrowRight size={14} />
+                    </span>
+                  ) : null}
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white" style={{ background: step.color }}>
+                      <Icon size={17} />
+                    </span>
+                    <span className="rounded-md bg-white px-2 py-1 font-mono text-[10px] font-semibold uppercase text-[var(--muted)]">{step.signal}</span>
+                  </div>
+                  <p className="text-[13px] font-bold">{step.title}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">{step.outcome}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function Overview({ data }: { data: AgencyData }) {
   const { dashboard } = data;
   const qualityAvg = Math.round(dashboard.quality_radar.reduce((sum, item) => sum + item.score, 0) / dashboard.quality_radar.length);
@@ -435,10 +1063,10 @@ function Overview({ data }: { data: AgencyData }) {
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Spend" value={formatMoney(dashboard.totals.spend)} detail={`CPA ${formatMoney(dashboard.totals.cpa)}`} icon={CircleDollarSign} tone="#0f8b8d" />
-        <KpiCard label="Conversions" value={formatNumber(dashboard.totals.conversions)} detail={`${dashboard.totals.ctr}% blended CTR`} icon={TrendingUp} tone="#2e9d62" />
-        <KpiCard label="Impressions" value={formatCompact(dashboard.totals.impressions)} detail={`${formatNumber(dashboard.totals.clicks)} clicks`} icon={LineChartIcon} tone="#7157d9" />
-        <KpiCard label="Quality Index" value={`${qualityAvg}`} detail={`${dashboard.totals.approved_creatives} approved assets`} icon={Wand2} tone="#e4572e" />
+        <KpiCard label="Spend" value={formatMoney(dashboard.totals.spend)} detail={`CPA ${formatMoney(dashboard.totals.cpa)}`} icon={CircleDollarSign} tone="#256b8f" />
+        <KpiCard label="Conversions" value={formatNumber(dashboard.totals.conversions)} detail={`${dashboard.totals.ctr}% blended CTR`} icon={TrendingUp} tone="#1f9d72" />
+        <KpiCard label="Impressions" value={formatCompact(dashboard.totals.impressions)} detail={`${formatNumber(dashboard.totals.clicks)} clicks`} icon={LineChartIcon} tone="#5b65d8" />
+        <KpiCard label="Quality Index" value={`${qualityAvg}`} detail={`${dashboard.totals.approved_creatives} approved assets`} icon={Wand2} tone="#0f9f95" />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.45fr_0.9fr]">
@@ -457,9 +1085,9 @@ function Overview({ data }: { data: AgencyData }) {
                 <YAxis yAxisId="right" orientation="right" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
                 <Tooltip formatter={(value, name) => (name === "spend" ? formatMoney(Number(value)) : value)} />
                 <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="spend" stroke="#0f8b8d" strokeWidth={3} dot={false} />
-                <Line yAxisId="right" type="monotone" dataKey="conversions" stroke="#e4572e" strokeWidth={3} dot={{ r: 3 }} />
-                <Line yAxisId="right" type="monotone" dataKey="ctr" stroke="#7157d9" strokeWidth={2} dot={false} />
+                <Line yAxisId="left" type="monotone" dataKey="spend" stroke="#256b8f" strokeWidth={3} dot={false} />
+                <Line yAxisId="right" type="monotone" dataKey="conversions" stroke="#1f9d72" strokeWidth={3} dot={{ r: 3 }} />
+                <Line yAxisId="right" type="monotone" dataKey="ctr" stroke="#c7793a" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -505,7 +1133,7 @@ function Overview({ data }: { data: AgencyData }) {
               <RadarChart data={dashboard.quality_radar}>
                 <PolarGrid stroke="#dce3eb" />
                 <PolarAngleAxis dataKey="axis" tick={{ fontSize: 11, fill: "#626a78" }} />
-                <Radar dataKey="score" stroke="#7157d9" fill="#7157d9" fillOpacity={0.28} />
+                <Radar dataKey="score" stroke="#5b65d8" fill="#5b65d8" fillOpacity={0.28} />
                 <Tooltip />
               </RadarChart>
             </ResponsiveContainer>
@@ -659,8 +1287,8 @@ function Audiences({ audiences }: { audiences: Audience[] }) {
                   }}
                 />
                 <Legend verticalAlign="top" height={30} />
-                <Bar yAxisId="reach" dataKey="reach" name="Reach" fill="#0f8b8d" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="match" type="monotone" dataKey="match" name="Match rate" stroke="#e4572e" strokeWidth={3} />
+                <Bar yAxisId="reach" dataKey="reach" name="Reach" fill="#0f9f95" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="match" type="monotone" dataKey="match" name="Match rate" stroke="#c7793a" strokeWidth={3} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -717,8 +1345,8 @@ function Creatives({ creatives }: { creatives: Creative[] }) {
               <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
               <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
               <Tooltip />
-              <Area dataKey="quality" stroke="#7157d9" fill="#7157d9" fillOpacity={0.18} strokeWidth={3} />
-              <Line type="monotone" dataKey="ctr" stroke="#e4572e" strokeWidth={3} />
+              <Area dataKey="quality" stroke="#5b65d8" fill="#5b65d8" fillOpacity={0.18} strokeWidth={3} />
+              <Line type="monotone" dataKey="ctr" stroke="#c7793a" strokeWidth={3} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -790,7 +1418,7 @@ function Activations({ activations }: { activations: Activation[] }) {
                 <XAxis type="number" hide />
                 <YAxis type="category" dataKey="name" width={92} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
                 <Tooltip formatter={(value) => formatMoney(Number(value))} />
-                <Bar dataKey="spend" fill="#0f8b8d" radius={[0, 5, 5, 0]} />
+                <Bar dataKey="spend" fill="#0f9f95" radius={[0, 5, 5, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -835,8 +1463,179 @@ function Activations({ activations }: { activations: Activation[] }) {
   );
 }
 
-function AskDesk() {
-  const suggestions = ["average CTR by audience", "activation status", "creative quality", "campaign ROI"];
+function Markets({ markets }: { markets: MarketRegion[] }) {
+  const [selectedId, setSelectedId] = useState(markets[0]?.id ?? "");
+  const [expanded, setExpanded] = useState(true);
+  const selected = markets.find((market) => market.id === selectedId) ?? markets[0];
+  const totalReach = markets.reduce((sum, market) => sum + market.reach, 0);
+  const totalSpend = markets.reduce((sum, market) => sum + market.spend, 0);
+
+  function selectRegion(regionId: string) {
+    setSelectedId(regionId);
+    setExpanded(true);
+  }
+
+  if (!selected) {
+    return <Panel className="p-6 text-[13px] text-[var(--muted)]">No market data available.</Panel>;
+  }
+
+  return (
+    <div className="space-y-5">
+      <Panel className="overflow-hidden">
+        <div className="grid min-h-[650px] xl:grid-cols-[1.3fr_0.8fr]">
+          <div className="relative border-b border-[var(--line)] bg-[#f8fafc] p-5 xl:border-b-0 xl:border-r">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">National market command map</p>
+                <h2 className="mt-1 text-[22px] font-bold">Click a region to expand media opportunity</h2>
+                <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[var(--muted)]">
+                  Regional overlays combine C360 reach, paid-media spend, creative performance, and activation recommendations.
+                </p>
+              </div>
+              <div className="grid w-full grid-cols-3 gap-2 lg:w-[390px]">
+                <MarketHeaderStat label="Reach" value={formatCompact(totalReach)} />
+                <MarketHeaderStat label="Spend" value={formatMoney(totalSpend)} />
+                <MarketHeaderStat label="Regions" value={`${markets.length}`} />
+              </div>
+            </div>
+
+            <div className={`grid gap-4 ${expanded ? "2xl:grid-cols-[1.05fr_0.95fr]" : ""}`}>
+              <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--muted)]">
+                    <MousePointerClick size={15} />
+                    Click any market region
+                  </div>
+                  <button
+                    onClick={() => setExpanded((current) => !current)}
+                    className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-semibold text-[var(--muted)]"
+                  >
+                    <Maximize2 size={14} />
+                    {expanded ? "Compact" : "Expand"}
+                  </button>
+                </div>
+
+                <GeographyMarketMap markets={markets} selected={selected} onSelect={selectRegion} />
+              </div>
+
+              <AnimatePresence mode="wait">
+                {expanded ? (
+                  <motion.div
+                    key={selected.id}
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -12 }}
+                    transition={{ duration: 0.2 }}
+                    className="rounded-lg border border-[var(--line)] bg-white p-4"
+                  >
+                    <div className="mb-4 flex items-start justify-between">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Expanded market lens</p>
+                        <h3 className="mt-1 text-[19px] font-bold">{selected.name}</h3>
+                      </div>
+                      <span className="rounded-md bg-[var(--brand-primary)] px-2.5 py-1.5 text-[11px] font-semibold text-white">{selected.priority}</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 border-y border-[var(--line)] py-4">
+                      <MetricMini label="Reach" value={formatCompact(selected.reach)} />
+                      <MetricMini label="Spend" value={formatMoney(selected.spend)} />
+                      <MetricMini label="CTR" value={`${selected.ctr.toFixed(2)}%`} />
+                      <MetricMini label="Lift" value={`+${selected.conversion_lift.toFixed(1)}%`} />
+                    </div>
+
+                    <div className="mt-4 rounded-md bg-[var(--panel-soft)] p-3">
+                      <p className="text-[12px] font-semibold">Signal</p>
+                      <p className="mt-1 text-[12px] leading-5 text-[var(--muted)]">{selected.signal}</p>
+                    </div>
+                    <div className="mt-3 rounded-md border border-[var(--line)] p-3">
+                      <p className="text-[12px] font-semibold">Recommended action</p>
+                      <p className="mt-1 text-[12px] leading-5 text-[var(--muted)]">{selected.recommended_action}</p>
+                    </div>
+
+                    <div className="mt-4">
+                      <p className="mb-2 text-[12px] font-semibold">Priority metros</p>
+                      <div className="space-y-2">
+                        {selected.cities.map((city) => (
+                          <div key={city.name} className="flex items-center justify-between rounded-md border border-[var(--line)] px-3 py-2">
+                            <div>
+                              <p className="text-[12px] font-semibold">{city.name}, {city.state}</p>
+                              <p className="font-mono text-[11px] text-[var(--faint)]">{formatCompact(city.reach)} reach</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-mono text-[12px] font-semibold">{city.ctr.toFixed(2)}%</p>
+                              <p className="text-[11px] text-[var(--green)]">+{city.lift}% lift</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
+          </div>
+
+          <div className="space-y-4 p-5">
+            <div>
+              <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Selected region</p>
+              <h3 className="mt-1 text-[22px] font-bold">{selected.name}</h3>
+              <p className="mt-2 text-[13px] leading-6 text-[var(--muted)]">
+                Top audience: <span className="font-semibold text-[var(--ink)]">{selected.top_audience}</span>
+              </p>
+            </div>
+
+            <Panel>
+              <SectionHeader title="Metro-level drilldown" eyebrow="Click-through intensity" />
+              <div className="relative h-[300px] overflow-hidden rounded-b-lg bg-[#f1f6f9]">
+                <RegionalMetroMap market={selected} />
+              </div>
+            </Panel>
+
+            <Panel>
+              <SectionHeader title="Reach momentum" eyebrow="Four-week activation curve" />
+              <div className="h-[210px] p-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={selected.trend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid stroke="#e6ebf1" vertical={false} />
+                    <XAxis dataKey="week" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#626a78" }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#626a78" }} tickFormatter={formatCompact} />
+                    <Tooltip formatter={(value, name) => (name === "reach" ? formatNumber(Number(value)) : value)} />
+                    <Bar dataKey="reach" fill={REGION_SHAPES[selected.id]?.color ?? "#0f9f95"} fillOpacity={0.32} radius={[4, 4, 0, 0]} />
+                    <Line type="monotone" dataKey="conversions" stroke="#13212d" strokeWidth={3} dot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </Panel>
+
+            <Panel>
+              <SectionHeader title="Audience mix" eyebrow="Regional personalization" />
+              <div className="space-y-3 p-4">
+                {selected.audience_mix.map((item, index) => (
+                  <div key={item.name}>
+                    <div className="mb-1 flex items-center justify-between text-[12px]">
+                      <span className="font-semibold">{item.name}</span>
+                      <span className="font-mono text-[var(--muted)]">{item.value}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-[var(--panel-soft)]">
+                      <motion.div
+                        className="h-2 rounded-full"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${item.value}%` }}
+                        style={{ background: COLORS[index % COLORS.length] }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function useAskAssistant() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -863,10 +1662,450 @@ function AskDesk() {
     }
   }
 
+  return { input, loading, messages, setInput, submit };
+}
+
+function AskMessageList({
+  messages,
+  loading,
+  emptyText,
+  className = "",
+}: {
+  messages: ChatMessage[];
+  loading: boolean;
+  emptyText: string;
+  className?: string;
+}) {
+  return (
+    <div className={`thin-scrollbar flex-1 space-y-4 overflow-y-auto ${className}`}>
+      {messages.length === 0 ? (
+        <div className="flex h-full min-h-[180px] items-center justify-center text-center text-[13px] leading-6 text-[var(--faint)]">
+          {emptyText}
+        </div>
+      ) : null}
+      {messages.map((message) => (
+        <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
+          <div className={`max-w-[86%] rounded-lg px-4 py-3 ${message.role === "user" ? "bg-[var(--brand-primary)] text-white" : "border border-[var(--line)] bg-white"}`}>
+            <p className="text-[13px] leading-5">{message.content}</p>
+            {message.result ? <ResultTable result={message.result} /> : null}
+          </div>
+        </div>
+      ))}
+      {loading ? <p className="text-[13px] text-[var(--muted)]">Querying FastAPI...</p> : null}
+    </div>
+  );
+}
+
+function AskInputBar({
+  input,
+  setInput,
+  loading,
+  submit,
+  className = "",
+}: {
+  input: string;
+  setInput: React.Dispatch<React.SetStateAction<string>>;
+  loading: boolean;
+  submit: (question: string) => void;
+  className?: string;
+}) {
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit(input);
+      }}
+      className={`flex gap-2 border-t border-[var(--line)] p-4 ${className}`}
+    >
+      <input
+        value={input}
+        onChange={(event) => setInput(event.target.value)}
+        className="min-w-0 flex-1 rounded-md border border-[var(--line)] px-3 py-2 text-[13px] outline-none focus:border-[var(--teal)]"
+        placeholder="Ask about campaign performance..."
+      />
+      <button disabled={loading || !input.trim()} className="inline-flex items-center gap-2 rounded-md bg-[var(--teal)] px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-40">
+        <Send size={15} />
+        Send
+      </button>
+    </form>
+  );
+}
+
+function SolutionArchitecturePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  const endpoints = ["/api/health", "/api/dashboard", "/api/briefs", "/api/audiences", "/api/creatives", "/api/activations", "/api/markets", "/api/ask"];
+
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <button className="absolute inset-0 cursor-default bg-[#0b1f33]/35 backdrop-blur-[1px]" onClick={onClose} aria-label="Close architecture panel" />
+          <motion.aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Backend solution architecture"
+            className="absolute right-0 top-0 flex h-full w-full max-w-[1320px] flex-col border-l border-[var(--line)] bg-[var(--panel)] shadow-2xl shadow-[#0b1f33]/20"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 34, stiffness: 300 }}
+          >
+            <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="brand-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+                  <Layers3 size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[16px] font-bold">End-to-end solution architecture</p>
+                  <p className="truncate text-[12px] text-[var(--muted)]">ApertureIQ data, AI, and app flow on Databricks</p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--line)] bg-white text-[var(--muted)] hover:text-[var(--ink)]"
+                aria-label="Close"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="thin-scrollbar flex-1 overflow-y-auto p-5">
+              <EndToEndArchitectureDiagram endpoints={endpoints} />
+            </div>
+          </motion.aside>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+function ArchitectureCard({
+  title,
+  subtitle,
+  tone,
+  delay = 0,
+}: {
+  title: string;
+  subtitle: string;
+  tone: "source" | "stream" | "bronze" | "silver" | "gold" | "serving";
+  delay?: number;
+}) {
+  const toneClass = {
+    source: "border-blue-300 bg-blue-50 text-blue-950",
+    stream: "border-violet-300 bg-violet-50 text-violet-950",
+    bronze: "border-orange-300 bg-orange-50 text-orange-950",
+    silver: "border-slate-300 bg-slate-50 text-slate-950",
+    gold: "border-amber-300 bg-amber-50 text-amber-950",
+    serving: "border-emerald-300 bg-emerald-50 text-emerald-950",
+  }[tone];
+
+  return (
+    <motion.div
+      className={`architecture-card flex min-h-[72px] flex-col justify-center rounded-lg border px-3 py-2 text-center ${toneClass}`}
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.28, delay }}
+    >
+      <p className="text-[12px] font-bold leading-4">{title}</p>
+      <p className="mt-1 font-mono text-[10px] leading-4 text-[var(--muted)]">{subtitle}</p>
+    </motion.div>
+  );
+}
+
+function ArchitectureConnector({ dotted = false, delay = 0 }: { dotted?: boolean; delay?: number }) {
+  return (
+    <div className="architecture-connector-track relative flex h-5 items-center justify-center">
+      <motion.span
+        className={`architecture-flow-line h-0.5 w-full ${dotted ? "border-t-2 border-dashed border-blue-400" : "bg-blue-400"}`}
+        initial={{ scaleX: 0, transformOrigin: "left" }}
+        animate={{ scaleX: 1 }}
+        transition={{ duration: 0.35, delay }}
+      />
+      <span className="architecture-signal-dot" style={{ animationDelay: `${delay + 0.15}s` }} />
+      <span className="architecture-signal-dot architecture-signal-dot-secondary" style={{ animationDelay: `${delay + 0.65}s` }} />
+      <motion.span
+        className="h-2 w-2 shrink-0 rounded-full bg-blue-500 shadow-sm shadow-blue-500/40"
+        initial={{ scale: 0 }}
+        animate={{ scale: [0, 1.15, 1] }}
+        transition={{ duration: 0.4, delay: delay + 0.18 }}
+      />
+    </div>
+  );
+}
+
+function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
+  return (
+    <div>
+      <div className="mb-5 text-center">
+        <h2 className="text-[24px] font-extrabold text-[var(--ink)]">Marketing Intelligence Data Architecture</h2>
+        <p className="mt-2 text-[13px] font-semibold text-[var(--muted)]">ApertureIQ command center: end-to-end data and AI flow on Databricks</p>
+      </div>
+
+      <div className="thin-scrollbar overflow-x-auto pb-2">
+        <div className="min-w-[1180px]">
+          <div className="grid grid-cols-[190px_38px_170px_38px_520px_38px_300px] gap-0">
+            <motion.div className="rounded-t-xl border border-blue-200 bg-blue-50" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.02 }}>
+              <ArchitectureLaneHeader icon={FileText} title="Data Sources" subtitle="Enterprise systems" color="#256b8f" />
+            </motion.div>
+            <div />
+            <motion.div className="rounded-t-xl border border-violet-200 bg-violet-50" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+              <ArchitectureLaneHeader icon={RefreshCw} title="Ingestion" subtitle="Jobs / API sync" color="#5b65d8" />
+            </motion.div>
+            <div />
+            <motion.div className="rounded-t-xl border border-red-200 bg-red-50" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}>
+              <ArchitectureLaneHeader icon={Layers3} title="Data & AI Platform" subtitle="Databricks Lakehouse" color="#ef4444" />
+            </motion.div>
+            <div />
+            <motion.div className="rounded-t-xl border border-emerald-200 bg-emerald-50" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+              <ArchitectureLaneHeader icon={RadioTower} title="Serving & Apps" subtitle="Operational consumption" color="#0f9f95" />
+            </motion.div>
+
+            <div className="space-y-5 rounded-b-xl border-x border-b border-blue-200 bg-blue-50/35 p-4">
+              {ARCHITECTURE_ROWS.map((row, index) => (
+                <ArchitectureCard key={row.source[0]} title={row.source[0]} subtitle={row.source[1]} tone="source" delay={0.05 + index * 0.04} />
+              ))}
+            </div>
+
+            <div className="space-y-[83px] pt-9">
+              {ARCHITECTURE_ROWS.map((row, index) => (
+                <ArchitectureConnector key={row.source[0]} delay={0.18 + index * 0.04} />
+              ))}
+            </div>
+
+            <div className="space-y-5 rounded-b-xl border-x border-b border-violet-200 bg-violet-50/35 p-4">
+              {ARCHITECTURE_ROWS.map((row, index) => (
+                <ArchitectureCard key={row.stream[0]} title={row.stream[0]} subtitle={row.stream[1]} tone="stream" delay={0.22 + index * 0.04} />
+              ))}
+            </div>
+
+            <div className="space-y-[83px] pt-9">
+              {ARCHITECTURE_ROWS.map((row, index) => (
+                <ArchitectureConnector key={row.stream[0]} delay={0.34 + index * 0.04} />
+              ))}
+            </div>
+
+            <div className="rounded-b-xl border-x border-b border-red-200 bg-red-50/30 p-3">
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 p-3">
+                <div className="mb-3 grid grid-cols-3 gap-3 px-1 text-center text-[11px] font-bold uppercase text-[var(--faint)]">
+                  <span>Bronze</span>
+                  <span>Silver</span>
+                  <span>Gold</span>
+                </div>
+                <div className="space-y-5">
+                  {ARCHITECTURE_ROWS.map((row, rowIndex) => (
+                    <div key={row.bronze[0]} className="grid grid-cols-[1fr_24px_1fr_24px_1fr] items-center gap-2">
+                      <ArchitectureCard title={row.bronze[0]} subtitle={row.bronze[1]} tone="bronze" delay={0.4 + rowIndex * 0.04} />
+                      <ArchitectureConnector delay={0.5 + rowIndex * 0.04} />
+                      <ArchitectureCard title={row.silver[0]} subtitle={row.silver[1]} tone="silver" delay={0.58 + rowIndex * 0.04} />
+                      <ArchitectureConnector dotted delay={0.68 + rowIndex * 0.04} />
+                      <ArchitectureCard title={row.gold[0]} subtitle={row.gold[1]} tone="gold" delay={0.76 + rowIndex * 0.04} />
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-center text-[11px] font-semibold text-[var(--faint)]">Lakeflow Declarative Pipeline / Medallion Architecture</p>
+              </div>
+            </div>
+
+            <div className="space-y-[83px] pt-9">
+              {ARCHITECTURE_ROWS.map((row, index) => (
+                <ArchitectureConnector key={row.gold[0]} dotted delay={0.92 + index * 0.04} />
+              ))}
+            </div>
+
+            <div className="rounded-b-xl border-x border-b border-emerald-200 bg-emerald-50/25 p-4">
+              <div className="grid h-full grid-rows-[1fr_auto_1fr] gap-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {ARCH_SERVING_NODES.slice(0, 4).map((node, index) => (
+                    <ArchitectureCard key={node[0]} title={node[0]} subtitle={node[1]} tone="serving" delay={1.05 + index * 0.05} />
+                  ))}
+                </div>
+                <div className="flex items-center justify-center">
+                  <ArchitectureConnector dotted delay={1.25} />
+                </div>
+                <ArchitectureCard title={ARCH_SERVING_NODES[4][0]} subtitle={ARCH_SERVING_NODES[4][1]} tone="source" delay={1.32} />
+              </div>
+            </div>
+          </div>
+
+          <motion.div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/45 p-4" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.05 }}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-bold text-violet-900">Unity Catalog - Governance, Quality & Access Control</p>
+                <p className="mt-1 text-[11px] text-[var(--muted)]">Classification tags, masking policies, table constraints, lineage, and endpoint access boundaries.</p>
+              </div>
+              <span className="rounded-md border border-violet-200 bg-white px-2 py-1 font-mono text-[10px] font-semibold text-violet-700">governed</span>
+            </div>
+            <div className="grid gap-2 md:grid-cols-5">
+              {ARCH_TAGS.map((tag, index) => (
+                <motion.span
+                  key={tag}
+                  className="rounded-md border border-violet-200 bg-white px-2 py-1 text-center font-mono text-[10px] font-semibold text-violet-700"
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 1.15 + index * 0.05 }}
+                >
+                  {tag}
+                </motion.span>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-3 text-[11px] text-[var(--muted)] md:grid-cols-4">
+              <p><span className="font-semibold text-[var(--ink)]">PII masking</span><br />cohort identifiers, customer attributes</p>
+              <p><span className="font-semibold text-[var(--ink)]">DLT expectations</span><br />valid spend, valid CTR, valid market mapping</p>
+              <p><span className="font-semibold text-[var(--ink)]">Lineage</span><br />source to gold KPI traceability</p>
+              <p><span className="font-semibold text-[var(--ink)]">Access control</span><br />app, analyst, and operator views</p>
+            </div>
+          </motion.div>
+
+          <motion.div className="mt-4 rounded-xl border border-red-200 bg-red-50/35 p-4" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.2 }}>
+            <p className="mb-3 text-[13px] font-bold text-red-900">Platform Services</p>
+            <div className="grid gap-3 md:grid-cols-4">
+              {ARCH_PLATFORM_SERVICES.map((service, index) => (
+                <motion.div
+                  key={service[0]}
+                  className="rounded-lg border border-red-200 bg-white px-3 py-3 text-center"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1.3 + index * 0.05 }}
+                >
+                  <p className="text-[12px] font-bold">{service[0]}</p>
+                  <p className="mt-1 text-[11px] text-[var(--faint)]">{service[1]}</p>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+        <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+          <p className="text-[13px] font-semibold">Current API contract</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {endpoints.map((endpoint) => (
+              <span key={endpoint} className="rounded-md border border-[var(--line)] bg-[var(--panel-soft)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--muted)]">
+                {endpoint}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+          <p className="text-[13px] font-semibold">Implementation path</p>
+          <div className="mt-3 space-y-2 text-[12px] leading-5 text-[var(--muted)]">
+            <p>Today the demo uses FastAPI JSON contracts and in-memory data. The architecture canvas shows the production path behind the same contracts.</p>
+            <p>Databricks tables, Genie, SQL Warehouse, and Lakebase can be added without changing the React command center surface.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArchitectureLaneHeader({ icon: Icon, title, subtitle, color }: { icon: typeof Gauge; title: string; subtitle: string; color: string }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-3">
+      <span className="flex h-8 w-8 items-center justify-center rounded-md text-white" style={{ background: color }}>
+        <Icon size={17} />
+      </span>
+      <div>
+        <p className="text-[13px] font-extrabold leading-4">{title}</p>
+        <p className="text-[11px] font-semibold text-[var(--faint)]">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { input, loading, messages, setInput, submit } = useAskAssistant();
+
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <button className="absolute inset-0 cursor-default bg-[#0b1f33]/35 backdrop-blur-[1px]" onClick={onClose} aria-label="Close Ask AI panel" />
+          <motion.aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Ask AI side panel"
+            className="absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-[var(--line)] bg-[var(--panel)] shadow-2xl shadow-[#0b1f33]/20"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 34, stiffness: 300 }}
+          >
+            <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="brand-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+                  <Bot size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-bold">Ask ApertureIQ</p>
+                  <p className="truncate text-[12px] text-[var(--muted)]">Natural language workspace</p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--line)] bg-white text-[var(--muted)] hover:text-[var(--ink)]"
+                aria-label="Close"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="border-b border-[var(--line)] bg-[var(--panel-soft)]/70 p-4">
+              <p className="mb-3 text-[11px] font-semibold uppercase text-[var(--faint)]">Suggested prompts</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {ASK_SUGGESTIONS.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => submit(suggestion)}
+                    className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-left text-[12px] font-semibold text-[var(--muted)] hover:border-[var(--teal)] hover:text-[var(--ink)]"
+                  >
+                    <span>{suggestion}</span>
+                    <Send size={14} className="shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <AskMessageList
+              messages={messages}
+              loading={loading}
+              emptyText="Ask ApertureIQ about CTR, spend, activation status, creative quality, or ROI."
+              className="p-4"
+            />
+            <AskInputBar input={input} setInput={setInput} loading={loading} submit={submit} />
+          </motion.aside>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+function AskDesk() {
+  const { input, loading, messages, setInput, submit } = useAskAssistant();
+
   return (
     <div className="grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
       <Panel className="p-4">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--ink)] text-white">
+        <div className="brand-mark mb-5 flex h-12 w-12 items-center justify-center rounded-lg">
           <Bot size={22} />
         </div>
         <h2 className="text-[22px] font-bold">Ask the activation desk</h2>
@@ -874,7 +2113,7 @@ function AskDesk() {
           The FastAPI endpoint returns structured tables now. It can be wired to Genie, SQL warehouse, or Lakebase without changing the React surface.
         </p>
         <div className="mt-6 grid gap-2">
-          {suggestions.map((suggestion) => (
+          {ASK_SUGGESTIONS.map((suggestion) => (
             <button
               key={suggestion}
               onClick={() => submit(suggestion)}
@@ -888,40 +2127,13 @@ function AskDesk() {
       </Panel>
       <Panel className="flex min-h-[620px] flex-col">
         <SectionHeader title="Query results" eyebrow="Natural language workspace" />
-        <div className="thin-scrollbar flex-1 space-y-4 overflow-y-auto p-4">
-          {messages.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-center text-[13px] text-[var(--faint)]">
-              Select a query or ask about CTR, activation status, creative quality, or ROI.
-            </div>
-          ) : null}
-          {messages.map((message) => (
-            <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
-              <div className={`max-w-[86%] rounded-lg px-4 py-3 ${message.role === "user" ? "bg-[var(--ink)] text-white" : "border border-[var(--line)] bg-white"}`}>
-                <p className="text-[13px]">{message.content}</p>
-                {message.result ? <ResultTable result={message.result} /> : null}
-              </div>
-            </div>
-          ))}
-          {loading ? <p className="text-[13px] text-[var(--muted)]">Querying FastAPI...</p> : null}
-        </div>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit(input);
-          }}
-          className="flex gap-2 border-t border-[var(--line)] p-4"
-        >
-          <input
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            className="min-w-0 flex-1 rounded-md border border-[var(--line)] px-3 py-2 text-[13px] outline-none focus:border-[var(--teal)]"
-            placeholder="Ask about campaign performance..."
-          />
-          <button disabled={loading || !input.trim()} className="inline-flex items-center gap-2 rounded-md bg-[var(--teal)] px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-40">
-            <Send size={15} />
-            Send
-          </button>
-        </form>
+        <AskMessageList
+          messages={messages}
+          loading={loading}
+          emptyText="Select a query or ask about CTR, activation status, creative quality, or ROI."
+          className="p-4"
+        />
+        <AskInputBar input={input} setInput={setInput} loading={loading} submit={submit} />
       </Panel>
     </div>
   );
@@ -996,7 +2208,7 @@ function WorkSurface({
                 key={filter}
                 onClick={() => onFilter(filter)}
                 className={`rounded-md border px-3 py-2 text-[12px] font-semibold ${
-                  activeFilter === filter ? "border-[var(--ink)] bg-[var(--ink)] text-white" : "border-[var(--line)] bg-white text-[var(--muted)]"
+                  activeFilter === filter ? "border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white" : "border-[var(--line)] bg-white text-[var(--muted)]"
                 }`}
               >
                 {filter === "all" ? "All" : filter.replace("_", " ")}
@@ -1014,6 +2226,15 @@ function MetricMini({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">{label}</p>
       <p className="mt-1 font-mono text-[17px] font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function MarketHeaderStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-[var(--line)] bg-white px-3 py-2.5">
+      <p className="truncate text-[10px] font-semibold uppercase text-[var(--faint)]">{label}</p>
+      <p className="mt-1 truncate font-mono text-[15px] font-semibold leading-none text-[var(--ink)]">{value}</p>
     </div>
   );
 }
