@@ -198,6 +198,8 @@ type JourneyStep = {
 
 const COLORS = ["#0f9f95", "#256b8f", "#c7793a", "#5b65d8", "#1f9d72", "#d89a23", "#b65aa6"];
 const ASK_SUGGESTIONS = ["average CTR by audience", "activation status", "creative quality", "campaign ROI"];
+const PACING_WINDOWS = [7, 14, 30] as const;
+type PacingWindow = (typeof PACING_WINDOWS)[number];
 const ARCHITECTURE_ROWS = [
   {
     source: ["Campaign Briefs", "Planning / CRM"],
@@ -240,7 +242,7 @@ const ARCH_SERVING_NODES = [
   ["Lakebase", "PostgreSQL wire protocol"],
   ["Genie Space", "Natural-language analytics"],
   ["FastAPI", "Databricks App API boundary"],
-  ["React", "ApertureIQ command center"],
+  ["React", "Creative Command Center"],
 ];
 const ARCH_TAGS = ["domain=marketing", "sensitivity=internal", "data_classification=pii", "quality=validated", "refresh_cadence=near-real-time"];
 const ARCH_PLATFORM_SERVICES = [
@@ -818,7 +820,10 @@ function App() {
           </div>
           {!sidebarCollapsed ? (
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[14px] font-bold">ApertureIQ</p>
+              <p className="text-[14px] font-bold leading-[16px]">
+                <span className="block">Creative Command</span>
+                <span className="block">Center</span>
+              </p>
               <p className="truncate text-[11px] text-white/60">Marketing intelligence OS</p>
             </div>
           ) : null}
@@ -845,7 +850,7 @@ function App() {
         <div className={`absolute bottom-0 left-0 right-0 border-t border-white/10 ${sidebarCollapsed ? "p-2" : "p-4"}`}>
           {!sidebarCollapsed ? (
             <div className="rounded-lg border border-white/10 bg-white/[0.08] p-3">
-              <p className="text-[12px] font-semibold">Aperture signal</p>
+              <p className="text-[12px] font-semibold">Creative signal</p>
               <div className="mt-2 flex items-center gap-2 text-[12px] text-white/70">
                 <span className="h-2 w-2 rounded-full bg-[var(--brand-accent)]" />
                 Decision layer live
@@ -912,7 +917,7 @@ function TopBar({ view, onView, onAsk }: { view: View; onView: (view: View) => v
       <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-4 sm:px-6">
         <div>
           <div className="flex items-center gap-2 text-[12px] text-[var(--muted)]">
-            <span>ApertureIQ Command</span>
+            <span>Creative Command Center</span>
             <span>/</span>
             <span className="font-semibold text-[var(--ink)]">{active?.label}</span>
           </div>
@@ -970,8 +975,7 @@ function LoadingState() {
 }
 
 function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
-  const activeIndex = Math.max(0, JOURNEY_STEPS.findIndex((step) => step.id === view));
-  const activeStep = JOURNEY_STEPS[activeIndex];
+  const activeStep = JOURNEY_STEPS.find((step) => step.id === view) ?? JOURNEY_STEPS[0];
   const ActiveIcon = activeStep.icon;
   const optimizationSteps = JOURNEY_STEPS.filter((step) => step.id !== "overview");
 
@@ -985,12 +989,7 @@ function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view
               <ActiveIcon size={20} />
             </span>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-[20px] font-bold">{activeStep.title}</h2>
-                <span className="rounded-md bg-white px-2 py-1 font-mono text-[10px] font-semibold uppercase text-[var(--muted)]">
-                  Step {activeIndex + 1}/{JOURNEY_STEPS.length}
-                </span>
-              </div>
+              <h2 className="text-[20px] font-bold">{activeStep.title}</h2>
               <p className="mt-2 text-[13px] leading-6 text-[var(--muted)]">{activeStep.userGoal}</p>
             </div>
           </div>
@@ -1058,6 +1057,8 @@ function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view
 
 function Overview({ data }: { data: AgencyData }) {
   const { dashboard } = data;
+  const [pacingWindow, setPacingWindow] = useState<PacingWindow>(7);
+  const pacingTrend = useMemo(() => dashboard.trend.slice(-pacingWindow), [dashboard.trend, pacingWindow]);
   const qualityAvg = Math.round(dashboard.quality_radar.reduce((sum, item) => sum + item.score, 0) / dashboard.quality_radar.length);
 
   return (
@@ -1073,21 +1074,56 @@ function Overview({ data }: { data: AgencyData }) {
         <Panel>
           <SectionHeader
             title="Pacing and response curve"
-            eyebrow="Spend, conversions, and CTR"
-            action={<span className="rounded-md bg-[var(--panel-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">Last 7 days</span>}
+            eyebrow="Spend and conversions"
+            action={
+              <div className="inline-flex rounded-md border border-[var(--line)] bg-[var(--panel-soft)] p-0.5" aria-label="Pacing date range">
+                {PACING_WINDOWS.map((window) => (
+                  <button
+                    key={window}
+                    type="button"
+                    onClick={() => setPacingWindow(window)}
+                    className={`rounded px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      pacingWindow === window
+                        ? "bg-white text-[var(--brand-primary)] shadow-sm"
+                        : "text-[var(--muted)] hover:text-[var(--ink)]"
+                    }`}
+                  >
+                    {window}D
+                  </button>
+                ))}
+              </div>
+            }
           />
           <div className="h-[360px] p-4">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={dashboard.trend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+              <LineChart data={pacingTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="#e6ebf1" vertical={false} />
                 <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
-                <YAxis yAxisId="left" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
-                <YAxis yAxisId="right" orientation="right" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
-                <Tooltip formatter={(value, name) => (name === "spend" ? formatMoney(Number(value)) : value)} />
-                <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="spend" stroke="#256b8f" strokeWidth={3} dot={false} />
-                <Line yAxisId="right" type="monotone" dataKey="conversions" stroke="#1f9d72" strokeWidth={3} dot={{ r: 3 }} />
-                <Line yAxisId="right" type="monotone" dataKey="ctr" stroke="#c7793a" strokeWidth={2} dot={false} />
+                <YAxis
+                  yAxisId="spend"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 12, fill: "#626a78" }}
+                  tickFormatter={(value) => formatCompact(Number(value))}
+                />
+                <YAxis
+                  yAxisId="response"
+                  orientation="right"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 12, fill: "#626a78" }}
+                  tickFormatter={(value) => formatNumber(Number(value))}
+                />
+                <Tooltip
+                  formatter={(value, name) => {
+                    if (name === "Spend") return [formatMoney(Number(value)), name];
+                    if (name === "Conversions") return [formatNumber(Number(value)), name];
+                    return [value, name];
+                  }}
+                />
+                <Legend verticalAlign="top" height={32} iconType="line" />
+                <Line yAxisId="spend" type="monotone" dataKey="spend" name="Spend" stroke="#256b8f" strokeWidth={3} dot={false} activeDot={{ r: 5 }} />
+                <Line yAxisId="response" type="monotone" dataKey="conversions" name="Conversions" stroke="#1f9d72" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1765,7 +1801,7 @@ function SolutionArchitecturePanel({ open, onClose }: { open: boolean; onClose: 
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-[16px] font-bold">End-to-end solution architecture</p>
-                  <p className="truncate text-[12px] text-[var(--muted)]">ApertureIQ data, AI, and app flow on Databricks</p>
+                  <p className="truncate text-[12px] text-[var(--muted)]">Creative Command Center data, AI, and app flow on Databricks</p>
                 </div>
               </div>
               <button
@@ -1847,7 +1883,7 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
     <div>
       <div className="mb-5 text-center">
         <h2 className="text-[24px] font-extrabold text-[var(--ink)]">Marketing Intelligence Data Architecture</h2>
-        <p className="mt-2 text-[13px] font-semibold text-[var(--muted)]">ApertureIQ command center: end-to-end data and AI flow on Databricks</p>
+        <p className="mt-2 text-[13px] font-semibold text-[var(--muted)]">Creative Command Center: end-to-end data and AI flow on Databricks</p>
       </div>
 
       <div className="thin-scrollbar overflow-x-auto pb-2">
@@ -2056,7 +2092,7 @@ function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void })
                   <Bot size={20} />
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-[15px] font-bold">Ask ApertureIQ</p>
+                  <p className="truncate text-[15px] font-bold">Ask Creative Command Center</p>
                   <p className="truncate text-[12px] text-[var(--muted)]">Natural language workspace</p>
                 </div>
               </div>
@@ -2088,7 +2124,7 @@ function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void })
             <AskMessageList
               messages={messages}
               loading={loading}
-              emptyText="Ask ApertureIQ about CTR, spend, activation status, creative quality, or ROI."
+              emptyText="Ask Creative Command Center about CTR, spend, activation status, creative quality, or ROI."
               className="p-4"
             />
             <AskInputBar input={input} setInput={setInput} loading={loading} submit={submit} />

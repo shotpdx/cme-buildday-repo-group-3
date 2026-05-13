@@ -1,0 +1,6 @@
+resources:
+  apps:
+    creative_command_center:
+      name: ${var.app_name}
+      description: Self-contained Creative Command Center demo with a FastAPI mock backend and React frontend.
+      source_code_path: ..

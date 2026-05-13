@@ -1,5 +1,5 @@
 {
-  "name": "apertureiq-command-center",
+  "name": "creative-command-center",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,8 +11,6 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@types/d3-geo": "^3.1.0",
-    "@types/topojson-client": "^3.1.5",
     "d3-geo": "^3.1.1",
     "framer-motion": "^12.23.26",
     "lucide-react": "^1.14.0",
@@ -23,9 +21,11 @@
     "us-atlas": "^3.0.1"
   },
   "devDependencies": {
+    "@types/d3-geo": "^3.1.0",
     "@types/node": "^20.11.0",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
+    "@types/topojson-client": "^3.1.5",
     "@vitejs/plugin-react": "^5.1.2",
     "autoprefixer": "^10.4.17",
     "concurrently": "^9.2.1",

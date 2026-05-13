@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,7 @@ from pydantic import BaseModel
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 
-app = FastAPI(title="ApertureIQ Command Center API", version="1.0.0")
+app = FastAPI(title="Creative Command Center API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -277,7 +278,7 @@ ACTIVATIONS = [
     },
 ]
 
-PERFORMANCE_TREND = [
+PERFORMANCE_TREND_LAST_7 = [
     {"date": "May 06", "spend": 34000, "conversions": 391, "ctr": 0.83},
     {"date": "May 07", "spend": 36500, "conversions": 430, "ctr": 0.91},
     {"date": "May 08", "spend": 39200, "conversions": 502, "ctr": 1.02},
@@ -286,6 +287,33 @@ PERFORMANCE_TREND = [
     {"date": "May 11", "spend": 47200, "conversions": 623, "ctr": 1.16},
     {"date": "May 12", "spend": 48900, "conversions": 681, "ctr": 1.28},
 ]
+
+
+def _build_performance_trend() -> list[dict[str, Any]]:
+    end_date = date(2026, 5, 12)
+    historical_days = 23
+    weekly_spend_wave = [0, 1200, 2600, 1800, 3200, 4600, 3900]
+    rows: list[dict[str, Any]] = []
+
+    for index in range(historical_days):
+        current = end_date - timedelta(days=historical_days + len(PERFORMANCE_TREND_LAST_7) - index - 1)
+        wave = weekly_spend_wave[index % len(weekly_spend_wave)]
+        spend = 21200 + index * 520 + wave
+        conversions = 238 + index * 7 + round(wave / 180)
+        ctr = round(0.72 + index * 0.008 + (wave / 46000), 2)
+        rows.append(
+            {
+                "date": current.strftime("%b %d"),
+                "spend": spend,
+                "conversions": conversions,
+                "ctr": ctr,
+            }
+        )
+
+    return rows + PERFORMANCE_TREND_LAST_7
+
+
+PERFORMANCE_TREND = _build_performance_trend()
 
 CHANNEL_MIX = [
     {"name": "Programmatic", "value": 42, "spend": 68100},
