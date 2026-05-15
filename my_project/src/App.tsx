@@ -226,7 +226,7 @@ type JourneyStep = {
   color: string;
 };
 
-const COLORS = ["#0f9f95", "#256b8f", "#c7793a", "#5b65d8", "#1f9d72", "#d89a23", "#b65aa6"];
+const COLORS = ["#00b8ff", "#c8ff2f", "#6757ff", "#ff4ecd", "#ff7a1a", "#12d6a5", "#9fe7ff"];
 const ASK_SUGGESTIONS = ["average CTR by audience", "activation status", "creative quality", "campaign ROI"];
 const PACING_WINDOWS = [7, 14, 30] as const;
 type PacingWindow = (typeof PACING_WINDOWS)[number];
@@ -272,7 +272,7 @@ const ARCH_SERVING_NODES = [
   ["Lakebase", "PostgreSQL wire protocol"],
   ["Genie Space", "Natural-language analytics"],
   ["FastAPI", "Databricks App API boundary"],
-  ["React", "Creative Command Center"],
+  ["React", "Omni"],
 ];
 const ARCH_TAGS = ["domain=marketing", "sensitivity=internal", "data_classification=pii", "quality=validated", "refresh_cadence=near-real-time"];
 const ARCH_PLATFORM_SERVICES = [
@@ -291,7 +291,7 @@ const JOURNEY_STEPS: JourneyStep[] = [
     signal: "Pulse",
     outcome: "Shared operating picture",
     icon: Gauge,
-    color: "#13212d",
+    color: "#6757ff",
   },
   {
     id: "briefs",
@@ -302,7 +302,7 @@ const JOURNEY_STEPS: JourneyStep[] = [
     signal: "Strategy",
     outcome: "Launch-ready brief",
     icon: FileText,
-    color: "#256b8f",
+    color: "#00b8ff",
   },
   {
     id: "audiences",
@@ -313,7 +313,7 @@ const JOURNEY_STEPS: JourneyStep[] = [
     signal: "C360",
     outcome: "Prioritized audience plan",
     icon: Users,
-    color: "#0f9f95",
+    color: "#12d6a5",
   },
   {
     id: "creatives",
@@ -324,7 +324,7 @@ const JOURNEY_STEPS: JourneyStep[] = [
     signal: "Quality",
     outcome: "Approved creative slate",
     icon: Palette,
-    color: "#5b65d8",
+    color: "#6757ff",
   },
   {
     id: "markets",
@@ -335,7 +335,7 @@ const JOURNEY_STEPS: JourneyStep[] = [
     signal: "Geo",
     outcome: "Market action map",
     icon: MapPinned,
-    color: "#c7793a",
+    color: "#ff7a1a",
   },
   {
     id: "activations",
@@ -346,7 +346,7 @@ const JOURNEY_STEPS: JourneyStep[] = [
     signal: "Live",
     outcome: "Controlled media execution",
     icon: RadioTower,
-    color: "#1f9d72",
+    color: "#00a66f",
   },
   {
     id: "ask",
@@ -357,7 +357,7 @@ const JOURNEY_STEPS: JourneyStep[] = [
     signal: "AI",
     outcome: "Decision support",
     icon: Bot,
-    color: "#13212d",
+    color: "#ff4ecd",
   },
 ];
 const NAV_ITEMS: Array<{ id: View; label: string; icon: typeof Gauge }> = [
@@ -374,27 +374,27 @@ const REGION_SHAPES: Record<string, { path: string; label: { x: number; y: numbe
   west: {
     path: "M53 43 L138 56 L154 165 L125 203 L73 181 L48 99 Z",
     label: { x: 94, y: 125 },
-    color: "#256b8f",
+    color: "#00b8ff",
   },
   central: {
     path: "M143 58 L253 62 L276 164 L220 204 L153 166 Z",
     label: { x: 206, y: 132 },
-    color: "#0f9f95",
+    color: "#12d6a5",
   },
   midwest: {
     path: "M246 58 L341 65 L356 136 L281 160 L257 70 Z",
     label: { x: 305, y: 107 },
-    color: "#5b65d8",
+    color: "#6757ff",
   },
   southeast: {
     path: "M275 145 L358 138 L387 216 L316 226 L229 203 Z",
     label: { x: 316, y: 184 },
-    color: "#1f9d72",
+    color: "#c8ff2f",
   },
   northeast: {
     path: "M342 61 L409 52 L420 113 L359 137 L347 108 Z",
     label: { x: 383, y: 93 },
-    color: "#c7793a",
+    color: "#ff7a1a",
   },
 };
 
@@ -556,10 +556,10 @@ function audienceChartLabel(name: string) {
 }
 
 function statusClass(status: string) {
-  if (["Live", "Active", "Approved"].includes(status)) return "bg-emerald-50 text-[var(--green)] border-emerald-200";
-  if (["Draft", "Submitted", "In Review", "Pending_Review"].includes(status)) return "bg-amber-50 text-[var(--amber)] border-amber-200";
-  if (["Rejected", "Ended"].includes(status)) return "bg-red-50 text-[var(--red)] border-red-200";
-  return "bg-slate-100 text-[var(--muted)] border-slate-200";
+  if (["Live", "Active", "Approved"].includes(status)) return "bg-emerald-950/55 text-emerald-200 border-emerald-400/35";
+  if (["Draft", "Submitted", "In Review", "Pending_Review"].includes(status)) return "bg-amber-950/55 text-amber-200 border-amber-400/35";
+  if (["Rejected", "Ended"].includes(status)) return "bg-red-950/55 text-red-200 border-red-400/35";
+  return "bg-slate-900/70 text-[var(--muted)] border-slate-600/50";
 }
 
 function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -623,6 +623,29 @@ function StatusPill({ value }: { value: string }) {
   return <span className={`inline-flex rounded-md border px-2 py-1 text-[11px] font-semibold ${statusClass(value)}`}>{value.replace("_", " ")}</span>;
 }
 
+function OmniDiamondLogo({ size = 22 }: { size?: number }) {
+  return (
+    <svg className="omni-diamond-logo" width={size} height={size} viewBox="0 0 32 32" role="img" aria-label="Omni">
+      <defs>
+        <linearGradient id="omniDiamondOuter" x1="4" x2="28" y1="4" y2="28">
+          <stop offset="0%" stopColor="#00b8ff" />
+          <stop offset="48%" stopColor="#6757ff" />
+          <stop offset="100%" stopColor="#c8ff2f" />
+        </linearGradient>
+        <linearGradient id="omniDiamondInner" x1="9" x2="23" y1="23" y2="9">
+          <stop offset="0%" stopColor="#ff4ecd" />
+          <stop offset="54%" stopColor="#12d6a5" />
+          <stop offset="100%" stopColor="#f4f8fb" />
+        </linearGradient>
+      </defs>
+      <path d="M16 2.8 29.2 16 16 29.2 2.8 16 16 2.8Z" fill="url(#omniDiamondOuter)" />
+      <path d="M16 8.2 23.8 16 16 23.8 8.2 16 16 8.2Z" fill="#090b12" opacity="0.86" />
+      <path d="M16 8.2 23.8 16 16 23.8 8.2 16 16 8.2Z" fill="none" stroke="url(#omniDiamondInner)" strokeWidth="2.4" />
+      <path d="M16 8.2V23.8M8.2 16H23.8" stroke="rgba(244,248,251,0.72)" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function regionForState(stateName: string, markets: MarketRegion[]) {
   const abbr = STATE_ABBR_BY_NAME[stateName];
   return markets.find((market) => market.states.includes(abbr));
@@ -642,7 +665,7 @@ function GeographyMarketMap({
 
   return (
     <svg viewBox="0 0 960 560" role="img" aria-label="US geography market map" className="h-auto w-full">
-      <rect x="0" y="0" width="960" height="560" rx="20" fill="#f1f6f9" />
+      <rect x="0" y="0" width="960" height="560" rx="20" fill="#0f1521" />
       <g transform="translate(20 16)">
         {US_GEO.features.map((state) => {
           const region = regionForState(state.properties.name, markets);
@@ -656,9 +679,9 @@ function GeographyMarketMap({
               onClick={() => region && onSelect(region.id)}
               whileHover={region ? { scale: 1.006 } : undefined}
               className={region ? "cursor-pointer outline-none" : ""}
-              fill={region ? REGION_SHAPES[region.id]?.color ?? "#0f9f95" : "#e6eef3"}
+              fill={region ? REGION_SHAPES[region.id]?.color ?? "#12d6a5" : "#202a3a"}
               fillOpacity={region ? (isActive ? 0.96 : 0.54) : 0.45}
-              stroke={isActive ? "#111827" : "#ffffff"}
+              stroke={isActive ? "#f4f8fb" : "#0f1521"}
               strokeWidth={isActive ? 2.2 : 1.1}
               strokeLinejoin="round"
             />
@@ -679,11 +702,11 @@ function GeographyMarketMap({
               animate={{ scale: isActive ? 1.08 : 1 }}
               transition={{ duration: 0.18 }}
             >
-              <circle cx={x} cy={y - 26} r={isActive ? 28 : 24} fill="#ffffff" stroke={REGION_SHAPES[market.id]?.color} strokeWidth="3" />
-              <text x={x} y={y - 30} textAnchor="middle" className="fill-[#111827] text-[16px] font-extrabold">
+              <circle cx={x} cy={y - 26} r={isActive ? 28 : 24} fill="#111827" stroke={REGION_SHAPES[market.id]?.color} strokeWidth="3" />
+              <text x={x} y={y - 30} textAnchor="middle" className="fill-[#f4f8fb] text-[16px] font-extrabold">
                 {market.ctr.toFixed(2)}%
               </text>
-              <text x={x} y={y - 12} textAnchor="middle" className="fill-[#5f6470] text-[10px] font-bold">
+              <text x={x} y={y - 12} textAnchor="middle" className="fill-[#b4c0cc] text-[10px] font-bold">
                 CTR
               </text>
               <text
@@ -691,9 +714,9 @@ function GeographyMarketMap({
                 y={y + 20}
                 textAnchor="middle"
                 paintOrder="stroke"
-                stroke="#ffffff"
+                stroke="#0f1521"
                 strokeWidth="6"
-                className="fill-[#111827] text-[15px] font-extrabold"
+                className="fill-[#f4f8fb] text-[15px] font-extrabold"
               >
                 {market.short_name}
               </text>
@@ -702,9 +725,9 @@ function GeographyMarketMap({
                 y={y + 37}
                 textAnchor="middle"
                 paintOrder="stroke"
-                stroke="#ffffff"
+                stroke="#0f1521"
                 strokeWidth="5"
-                className="fill-[#5f6470] text-[11px] font-bold"
+                className="fill-[#b4c0cc] text-[11px] font-bold"
               >
                 {formatCompact(market.reach)} reach
               </text>
@@ -719,11 +742,11 @@ function GeographyMarketMap({
 function RegionalMetroMap({ market }: { market: MarketRegion }) {
   const projection = useMemo(() => geoAlbersUsa().fitSize([920, 520], US_GEO as never), []);
   const path = useMemo(() => geoPath(projection), [projection]);
-  const regionColor = REGION_SHAPES[market.id]?.color ?? "#0f9f95";
+  const regionColor = REGION_SHAPES[market.id]?.color ?? "#12d6a5";
 
   return (
     <svg viewBox="0 0 960 560" className="h-full w-full" role="img" aria-label={`${market.name} metro geography map`}>
-      <rect x="0" y="0" width="960" height="560" rx="20" fill="#f1f6f9" />
+      <rect x="0" y="0" width="960" height="560" rx="20" fill="#0f1521" />
       <g transform="translate(20 16)">
         {US_GEO.features.map((state) => {
           const abbr = STATE_ABBR_BY_NAME[state.properties.name];
@@ -734,9 +757,9 @@ function RegionalMetroMap({ market }: { market: MarketRegion }) {
             <path
               key={state.id}
               d={statePath}
-              fill={inRegion ? regionColor : "#e6eef3"}
+              fill={inRegion ? regionColor : "#202a3a"}
               fillOpacity={inRegion ? 0.84 : 0.28}
-              stroke="#ffffff"
+              stroke="#0f1521"
               strokeWidth={inRegion ? 1.8 : 0.8}
               strokeLinejoin="round"
             />
@@ -754,16 +777,16 @@ function RegionalMetroMap({ market }: { market: MarketRegion }) {
           return (
             <motion.g key={city.name} initial={{ scale: 0.82, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
               <circle cx={x} cy={y} r={Math.max(14, city.reach / 5200)} fill={regionColor} fillOpacity="0.22" />
-              <line x1={x} y1={y} x2={labelX} y2={labelY - 5} stroke="#667085" strokeWidth="1.4" strokeDasharray="4 4" />
-              <circle cx={x} cy={y} r="7" fill={regionColor} stroke="#ffffff" strokeWidth="3" />
+              <line x1={x} y1={y} x2={labelX} y2={labelY - 5} stroke="#81909f" strokeWidth="1.4" strokeDasharray="4 4" />
+              <circle cx={x} cy={y} r="7" fill={regionColor} stroke="#0f1521" strokeWidth="3" />
               <text
                 x={labelX}
                 y={labelY}
                 textAnchor={label.anchor}
                 paintOrder="stroke"
-                stroke="#ffffff"
+                stroke="#0f1521"
                 strokeWidth="8"
-                className="fill-[#111827] text-[15px] font-extrabold"
+                className="fill-[#f4f8fb] text-[15px] font-extrabold"
               >
                 {city.name}
               </text>
@@ -772,9 +795,9 @@ function RegionalMetroMap({ market }: { market: MarketRegion }) {
                 y={labelY + 18}
                 textAnchor={label.anchor}
                 paintOrder="stroke"
-                stroke="#ffffff"
+                stroke="#0f1521"
                 strokeWidth="7"
-                className="fill-[#5f6470] text-[11px] font-bold"
+                className="fill-[#b4c0cc] text-[11px] font-bold"
               >
                 {formatCompact(city.reach)} · {city.ctr.toFixed(2)}% CTR
               </text>
@@ -838,7 +861,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--canvas)]">
+    <div className="omni-shell min-h-screen bg-[var(--canvas)]">
       <motion.aside
         className={`brand-sidebar fixed left-0 top-0 z-20 hidden h-screen border-r border-white/10 text-white lg:block ${sidebarCollapsed ? "w-[76px]" : "w-[248px]"}`}
         animate={{ width: sidebarCollapsed ? 76 : 248 }}
@@ -846,7 +869,7 @@ function App() {
       >
         <button
           onClick={() => setSidebarCollapsed((current) => !current)}
-          className="absolute -right-3 top-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-[var(--brand-navy)] text-white/80 shadow-lg shadow-[#0b1f33]/20 transition-colors hover:bg-[var(--brand-navy-soft)] hover:text-white"
+          className="absolute right-2 top-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-[var(--brand-navy)] text-white/80 shadow-lg shadow-[#11131a]/20 transition-colors hover:bg-[var(--brand-navy-soft)] hover:text-white"
           aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -854,16 +877,13 @@ function App() {
         </button>
 
         <div className={`flex h-16 items-center border-b border-white/10 ${sidebarCollapsed ? "justify-center px-3" : "gap-3 px-5 pr-8"}`}>
-          <div className="brand-mark flex h-9 w-9 items-center justify-center rounded-lg shadow-lg shadow-teal-500/20">
-            <Megaphone size={18} />
+          <div className="brand-mark flex h-9 w-9 items-center justify-center rounded-lg shadow-lg shadow-cyan-500/20">
+            <OmniDiamondLogo size={24} />
           </div>
           {!sidebarCollapsed ? (
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-bold leading-[16px]">
-                <span className="block">Creative Command</span>
-                <span className="block">Center</span>
-              </p>
-              <p className="truncate text-[11px] text-white/60">Marketing intelligence OS</p>
+              <p className="text-[18px] font-extrabold leading-[20px]">Omni</p>
+              <p className="truncate text-[11px] text-white/60">Marketing and sales intelligence</p>
             </div>
           ) : null}
         </div>
@@ -889,9 +909,9 @@ function App() {
         <div className={`absolute bottom-0 left-0 right-0 border-t border-white/10 ${sidebarCollapsed ? "p-2" : "p-4"}`}>
           {!sidebarCollapsed ? (
             <div className="rounded-lg border border-white/10 bg-white/[0.08] p-3">
-              <p className="text-[12px] font-semibold">Creative signal</p>
+              <p className="text-[12px] font-semibold">Omni signal</p>
               <div className="mt-2 flex items-center gap-2 text-[12px] text-white/70">
-                <span className="h-2 w-2 rounded-full bg-[var(--brand-accent)]" />
+                <span className="h-2 w-2 rounded-full bg-[var(--brand-accent)] shadow-[0_0_16px_rgba(200,255,47,0.75)]" />
                 Decision layer live
               </div>
             </div>
@@ -976,7 +996,7 @@ function TopBar({ view, onView, onAsk }: { view: View; onView: (view: View) => v
       <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-4 sm:px-6">
         <div>
           <div className="flex items-center gap-2 text-[12px] text-[var(--muted)]">
-            <span>Creative Command Center</span>
+            <span>Omni</span>
             <span>/</span>
             <span className="font-semibold text-[var(--ink)]">{active?.label}</span>
           </div>
@@ -1033,6 +1053,53 @@ function LoadingState() {
   );
 }
 
+function OmniSignalVisual() {
+  return (
+    <div className="omni-signal-visual hidden lg:block" aria-hidden="true">
+      <svg viewBox="0 0 520 220" role="presentation">
+        <defs>
+          <linearGradient id="omniTracePrimary" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stopColor="#00b8ff" stopOpacity="0.15" />
+            <stop offset="46%" stopColor="#c8ff2f" stopOpacity="0.75" />
+            <stop offset="100%" stopColor="#ff4ecd" stopOpacity="0.18" />
+          </linearGradient>
+          <linearGradient id="omniTraceSecondary" x1="0" x2="1" y1="1" y2="0">
+            <stop offset="0%" stopColor="#6757ff" stopOpacity="0.18" />
+            <stop offset="50%" stopColor="#00b8ff" stopOpacity="0.65" />
+            <stop offset="100%" stopColor="#12d6a5" stopOpacity="0.22" />
+          </linearGradient>
+        </defs>
+        <path className="omni-trace omni-trace-a" d="M18 165 C118 96 186 214 288 113 C354 49 422 62 502 24" />
+        <path className="omni-trace omni-trace-b" d="M14 64 C104 110 145 29 240 77 C312 114 372 181 506 144" />
+        <path className="omni-trace omni-trace-c" d="M46 188 L126 144 L196 152 L268 96 L350 122 L432 76 L504 92" />
+        {[
+          [46, 188],
+          [126, 144],
+          [196, 152],
+          [268, 96],
+          [350, 122],
+          [432, 76],
+          [504, 92],
+          [74, 72],
+          [240, 77],
+          [288, 113],
+        ].map(([x, y], index) => (
+          <rect key={`${x}-${y}`} className="omni-node" x={x - 4} y={y - 4} width="8" height="8" rx="2" style={{ animationDelay: `${index * 0.16}s` }} />
+        ))}
+        <g className="omni-chip-cluster">
+          <rect x="312" y="34" width="84" height="34" rx="8" />
+          <line x1="326" y1="48" x2="368" y2="48" />
+          <line x1="326" y1="56" x2="382" y2="56" />
+        </g>
+        <g className="omni-chip-cluster omni-chip-cluster-secondary">
+          <rect x="116" y="48" width="74" height="30" rx="8" />
+          <line x1="128" y1="61" x2="174" y2="61" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
   const activeStep = JOURNEY_STEPS.find((step) => step.id === view) ?? JOURNEY_STEPS[0];
   const ActiveIcon = activeStep.icon;
@@ -1040,9 +1107,10 @@ function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view
 
   return (
     <Panel className="overflow-hidden">
-      <div className="border-b border-[var(--line)] bg-[var(--panel-soft)]/55 p-4">
-        <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Campaign journey</p>
-        <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_0.8fr]">
+      <div className="omni-journey-hero relative overflow-hidden border-b border-[var(--line)] bg-[var(--panel-soft)]/55 p-4">
+        <OmniSignalVisual />
+        <p className="relative z-[1] text-[11px] font-semibold uppercase text-[var(--faint)]">Campaign journey</p>
+        <div className="relative z-[1] mt-3 grid gap-4 lg:grid-cols-[1fr_0.8fr]">
           <div className="flex items-start gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white" style={{ background: activeStep.color }}>
               <ActiveIcon size={20} />
@@ -1123,10 +1191,10 @@ function Overview({ data }: { data: AgencyData }) {
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Spend" value={formatMoney(dashboard.totals.spend)} detail={`CPA ${formatMoney(dashboard.totals.cpa)}`} icon={CircleDollarSign} tone="#256b8f" />
-        <KpiCard label="Conversions" value={formatNumber(dashboard.totals.conversions)} detail={`${dashboard.totals.ctr}% blended CTR`} icon={TrendingUp} tone="#1f9d72" />
-        <KpiCard label="Impressions" value={formatCompact(dashboard.totals.impressions)} detail={`${formatNumber(dashboard.totals.clicks)} clicks`} icon={LineChartIcon} tone="#5b65d8" />
-        <KpiCard label="Quality Index" value={`${qualityAvg}`} detail={`${dashboard.totals.approved_creatives} approved assets`} icon={Wand2} tone="#0f9f95" />
+        <KpiCard label="Spend" value={formatMoney(dashboard.totals.spend)} detail={`CPA ${formatMoney(dashboard.totals.cpa)}`} icon={CircleDollarSign} tone="#00b8ff" />
+        <KpiCard label="Conversions" value={formatNumber(dashboard.totals.conversions)} detail={`${dashboard.totals.ctr}% blended CTR`} icon={TrendingUp} tone="#12d6a5" />
+        <KpiCard label="Impressions" value={formatCompact(dashboard.totals.impressions)} detail={`${formatNumber(dashboard.totals.clicks)} clicks`} icon={LineChartIcon} tone="#6757ff" />
+        <KpiCard label="Quality Index" value={`${qualityAvg}`} detail={`${dashboard.totals.approved_creatives} approved assets`} icon={Wand2} tone="#ff4ecd" />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.45fr_0.9fr]">
@@ -1156,13 +1224,13 @@ function Overview({ data }: { data: AgencyData }) {
           <div className="h-[360px] p-4">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={pacingTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="#e6ebf1" vertical={false} />
-                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
+                <CartesianGrid stroke="#2a3444" vertical={false} />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#aeb8c4" }} />
                 <YAxis
                   yAxisId="spend"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12, fill: "#626a78" }}
+                  tick={{ fontSize: 12, fill: "#aeb8c4" }}
                   tickFormatter={(value) => formatCompact(Number(value))}
                 />
                 <YAxis
@@ -1170,7 +1238,7 @@ function Overview({ data }: { data: AgencyData }) {
                   orientation="right"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12, fill: "#626a78" }}
+                  tick={{ fontSize: 12, fill: "#aeb8c4" }}
                   tickFormatter={(value) => formatNumber(Number(value))}
                 />
                 <Tooltip
@@ -1181,8 +1249,8 @@ function Overview({ data }: { data: AgencyData }) {
                   }}
                 />
                 <Legend verticalAlign="top" height={32} iconType="line" />
-                <Line yAxisId="spend" type="monotone" dataKey="spend" name="Spend" stroke="#256b8f" strokeWidth={3} dot={false} activeDot={{ r: 5 }} />
-                <Line yAxisId="response" type="monotone" dataKey="conversions" name="Conversions" stroke="#1f9d72" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line yAxisId="spend" type="monotone" dataKey="spend" name="Spend" stroke="#00b8ff" strokeWidth={3} dot={false} activeDot={{ r: 5 }} />
+                <Line yAxisId="response" type="monotone" dataKey="conversions" name="Conversions" stroke="#12d6a5" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1226,9 +1294,9 @@ function Overview({ data }: { data: AgencyData }) {
           <div className="h-[300px] p-4">
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={dashboard.quality_radar}>
-                <PolarGrid stroke="#dce3eb" />
-                <PolarAngleAxis dataKey="axis" tick={{ fontSize: 11, fill: "#626a78" }} />
-                <Radar dataKey="score" stroke="#5b65d8" fill="#5b65d8" fillOpacity={0.28} />
+                <PolarGrid stroke="#2a3444" />
+                <PolarAngleAxis dataKey="axis" tick={{ fontSize: 11, fill: "#aeb8c4" }} />
+                <Radar dataKey="score" stroke="#6757ff" fill="#6757ff" fillOpacity={0.28} />
                 <Tooltip />
               </RadarChart>
             </ResponsiveContainer>
@@ -1347,7 +1415,7 @@ function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelSta
           <div className="h-[360px] p-4">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ left: 0, right: 10, top: 8, bottom: 12 }}>
-                <CartesianGrid stroke="#e6ebf1" vertical={false} />
+                <CartesianGrid stroke="#2a3444" vertical={false} />
                 <XAxis
                   dataKey="label"
                   interval={0}
@@ -1355,13 +1423,13 @@ function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelSta
                   tickLine={false}
                   axisLine={false}
                   tickMargin={12}
-                  tick={{ fontSize: 11, fill: "#626a78" }}
+                  tick={{ fontSize: 11, fill: "#aeb8c4" }}
                 />
                 <YAxis
                   yAxisId="reach"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12, fill: "#626a78" }}
+                  tick={{ fontSize: 12, fill: "#aeb8c4" }}
                   tickFormatter={formatCompact}
                 />
                 <YAxis
@@ -1370,7 +1438,7 @@ function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelSta
                   domain={[0, 100]}
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 12, fill: "#626a78" }}
+                  tick={{ fontSize: 12, fill: "#aeb8c4" }}
                   tickFormatter={(value) => `${value}%`}
                 />
                 <Tooltip
@@ -1382,8 +1450,8 @@ function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelSta
                   }}
                 />
                 <Legend verticalAlign="top" height={30} />
-                <Bar yAxisId="reach" dataKey="reach" name="Reach" fill="#0f9f95" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="match" type="monotone" dataKey="match" name="Match rate" stroke="#c7793a" strokeWidth={3} />
+                <Bar yAxisId="reach" dataKey="reach" name="Reach" fill="#12d6a5" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="match" type="monotone" dataKey="match" name="Match rate" stroke="#ff7a1a" strokeWidth={3} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -1436,12 +1504,12 @@ function Creatives({ creatives }: { creatives: Creative[] }) {
         <div className="h-[260px] p-4">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={qualityData} margin={{ top: 8, right: 18, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="#e6ebf1" vertical={false} />
-              <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
+              <CartesianGrid stroke="#2a3444" vertical={false} />
+              <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#aeb8c4" }} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#aeb8c4" }} />
               <Tooltip />
-              <Area dataKey="quality" stroke="#5b65d8" fill="#5b65d8" fillOpacity={0.18} strokeWidth={3} />
-              <Line type="monotone" dataKey="ctr" stroke="#c7793a" strokeWidth={3} />
+              <Area dataKey="quality" stroke="#6757ff" fill="#6757ff" fillOpacity={0.18} strokeWidth={3} />
+              <Line type="monotone" dataKey="ctr" stroke="#ff7a1a" strokeWidth={3} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -1509,11 +1577,11 @@ function Activations({ activations }: { activations: Activation[] }) {
           <div className="h-[320px] p-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={platformData} layout="vertical" margin={{ left: 10, right: 18, top: 8, bottom: 0 }}>
-                <CartesianGrid stroke="#e6ebf1" horizontal={false} />
+                <CartesianGrid stroke="#2a3444" horizontal={false} />
                 <XAxis type="number" hide />
-                <YAxis type="category" dataKey="name" width={92} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
+                <YAxis type="category" dataKey="name" width={92} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#aeb8c4" }} />
                 <Tooltip formatter={(value) => formatMoney(Number(value))} />
-                <Bar dataKey="spend" fill="#0f9f95" radius={[0, 5, 5, 0]} />
+                <Bar dataKey="spend" fill="#12d6a5" radius={[0, 5, 5, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -1578,7 +1646,7 @@ function Markets({ markets }: { markets: MarketRegion[] }) {
     <div className="space-y-5">
       <Panel className="overflow-hidden">
         <div className="grid min-h-[650px] xl:grid-cols-[1.3fr_0.8fr]">
-          <div className="relative border-b border-[var(--line)] bg-[#f8fafc] p-5 xl:border-b-0 xl:border-r">
+          <div className="relative border-b border-[var(--line)] bg-[var(--panel-soft)] p-5 xl:border-b-0 xl:border-r">
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">National market command map</p>
@@ -1681,7 +1749,7 @@ function Markets({ markets }: { markets: MarketRegion[] }) {
 
             <Panel>
               <SectionHeader title="Metro-level drilldown" eyebrow="Click-through intensity" />
-              <div className="relative h-[300px] overflow-hidden rounded-b-lg bg-[#f1f6f9]">
+              <div className="relative h-[300px] overflow-hidden rounded-b-lg bg-[var(--panel-soft)]">
                 <RegionalMetroMap market={selected} />
               </div>
             </Panel>
@@ -1691,12 +1759,12 @@ function Markets({ markets }: { markets: MarketRegion[] }) {
               <div className="h-[210px] p-3">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={selected.trend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid stroke="#e6ebf1" vertical={false} />
-                    <XAxis dataKey="week" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#626a78" }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#626a78" }} tickFormatter={formatCompact} />
+                    <CartesianGrid stroke="#2a3444" vertical={false} />
+                    <XAxis dataKey="week" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#aeb8c4" }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#aeb8c4" }} tickFormatter={formatCompact} />
                     <Tooltip formatter={(value, name) => (name === "reach" ? formatNumber(Number(value)) : value)} />
-                    <Bar dataKey="reach" fill={REGION_SHAPES[selected.id]?.color ?? "#0f9f95"} fillOpacity={0.32} radius={[4, 4, 0, 0]} />
-                    <Line type="monotone" dataKey="conversions" stroke="#13212d" strokeWidth={3} dot={false} />
+                    <Bar dataKey="reach" fill={REGION_SHAPES[selected.id]?.color ?? "#12d6a5"} fillOpacity={0.32} radius={[4, 4, 0, 0]} />
+                    <Line type="monotone" dataKey="conversions" stroke="#c8ff2f" strokeWidth={3} dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -1739,19 +1807,19 @@ function TalkTrack({ data }: { data: AgencyData }) {
       title: "Stay inside the app",
       text: "Use this tab as the customer-facing talk track so the demo does not have to jump to a separate architecture diagram.",
       icon: Megaphone,
-      tone: "#256b8f",
+      tone: "#00b8ff",
     },
     {
       title: "Narrate brief to activation",
       text: "The application story starts with the brief, moves through audience, creative scoring, market opportunity, and activation control.",
       icon: Users,
-      tone: "#0f9f95",
+      tone: "#12d6a5",
     },
     {
       title: "Be explicit about reality",
       text: "Call out what is live in this branch, what is sample-backed, and where Model Serving or Genie can be connected later.",
       icon: Layers3,
-      tone: "#5b65d8",
+      tone: "#6757ff",
     },
   ];
   const deploySteps = [
@@ -1773,7 +1841,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
         "Quality radar and activity stream suggest whether the campaign is ready to scale or needs intervention.",
       ],
       transition: "Move to Briefs to show where this operating loop starts.",
-      tone: "#256b8f",
+      tone: "#00b8ff",
     },
     {
       tab: "Briefs",
@@ -1785,7 +1853,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
         "Budget and asset counts explain how much work is ready to move into audience and creative planning.",
       ],
       transition: "Move to Audience to show how the brief turns into targetable cohorts.",
-      tone: "#256b8f",
+      tone: "#00b8ff",
     },
     {
       tab: "Audiences",
@@ -1797,7 +1865,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
         "The cards surface LTV and eligibility flags so the team can avoid picking a large but poor-fit audience.",
       ],
       transition: "Move to Creative to show how selected audiences are matched to assets and performance signals.",
-      tone: "#0f9f95",
+      tone: "#12d6a5",
     },
     {
       tab: "Creatives",
@@ -1810,7 +1878,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
         "The story is performance measurement and iteration: which creative should go live, which needs work, and which variants can support A/B testing.",
       ],
       transition: "Move to Markets to explain where the strongest creative-audience combinations should be scaled.",
-      tone: "#5b65d8",
+      tone: "#6757ff",
     },
     {
       tab: "Markets",
@@ -1823,7 +1891,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
         "Reach momentum and audience mix explain whether the recommendation is backed by growth, concentration, or cohort fit.",
       ],
       transition: "Move to Activations to show how market decisions become platform execution.",
-      tone: "#c7793a",
+      tone: "#ff7a1a",
     },
     {
       tab: "Activations",
@@ -1836,7 +1904,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
         "Sync timestamps reinforce that this is the operational control surface for trafficking and measurement.",
       ],
       transition: "Use Ask AI as an overlay for follow-up questions, not as the final workflow step.",
-      tone: "#1f9d72",
+      tone: "#12d6a5",
     },
     {
       tab: "Ask AI",
@@ -1848,7 +1916,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
         "In this branch the endpoint returns sample-backed answers, which is why the talk track should frame Genie as a production connection point.",
       ],
       transition: "Use Talk Track when you need to explain architecture, data source reality, or the demo story without leaving the app.",
-      tone: "#13212d",
+      tone: "#ff4ecd",
     },
   ];
 
@@ -2116,12 +2184,12 @@ function TalkTrackPanel({ open, onClose, data }: { open: boolean; onClose: () =>
     <AnimatePresence>
       {open ? (
         <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <button className="absolute inset-0 cursor-default bg-[#0b1f33]/35 backdrop-blur-[1px]" onClick={onClose} aria-label="Close talk track" />
+          <button className="absolute inset-0 cursor-default bg-[#11131a]/35 backdrop-blur-[1px]" onClick={onClose} aria-label="Close talk track" />
           <motion.aside
             role="dialog"
             aria-modal="true"
             aria-label="Talk track"
-            className="absolute right-0 top-0 flex h-full w-full max-w-[1320px] flex-col border-l border-[var(--line)] bg-[var(--panel)] shadow-2xl shadow-[#0b1f33]/20"
+            className="absolute right-0 top-0 flex h-full w-full max-w-[1320px] flex-col border-l border-[var(--line)] bg-[var(--panel)] shadow-2xl shadow-[#11131a]/20"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
@@ -2130,7 +2198,7 @@ function TalkTrackPanel({ open, onClose, data }: { open: boolean; onClose: () =>
             <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="brand-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
-                  <Megaphone size={20} />
+                  <OmniDiamondLogo size={25} />
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-[16px] font-bold">Talk Track</p>
@@ -2200,12 +2268,12 @@ function SolutionArchitecturePanel({
     <AnimatePresence>
       {open ? (
         <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <button className="absolute inset-0 cursor-default bg-[#0b1f33]/35 backdrop-blur-[1px]" onClick={onClose} aria-label="Close architecture panel" />
+          <button className="absolute inset-0 cursor-default bg-[#11131a]/35 backdrop-blur-[1px]" onClick={onClose} aria-label="Close architecture panel" />
           <motion.aside
             role="dialog"
             aria-modal="true"
             aria-label="Backend solution architecture"
-            className="absolute right-0 top-0 flex h-full w-full max-w-[1320px] flex-col border-l border-[var(--line)] bg-[var(--panel)] shadow-2xl shadow-[#0b1f33]/20"
+            className="absolute right-0 top-0 flex h-full w-full max-w-[1320px] flex-col border-l border-[var(--line)] bg-[var(--panel)] shadow-2xl shadow-[#11131a]/20"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
@@ -2214,7 +2282,7 @@ function SolutionArchitecturePanel({
             <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="brand-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
-                  <Layers3 size={20} />
+                  <OmniDiamondLogo size={25} />
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-[16px] font-bold">Architecture menu</p>
@@ -2272,7 +2340,7 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
     {
       phase: "Plan",
       icon: Gauge,
-      color: "#256b8f",
+      color: "#00b8ff",
       bgColor: "bg-blue-50",
       borderColor: "border-blue-200",
       persona: "CMO / Campaign Lead",
@@ -2283,7 +2351,7 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
     {
       phase: "Target",
       icon: Users,
-      color: "#0f9f95",
+      color: "#12d6a5",
       bgColor: "bg-emerald-50",
       borderColor: "border-emerald-200",
       persona: "Audience Strategist",
@@ -2294,7 +2362,7 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
     {
       phase: "Create",
       icon: Palette,
-      color: "#5b65d8",
+      color: "#6757ff",
       bgColor: "bg-violet-50",
       borderColor: "border-violet-200",
       persona: "Creative Director",
@@ -2305,7 +2373,7 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
     {
       phase: "Activate",
       icon: Megaphone,
-      color: "#c7793a",
+      color: "#ff7a1a",
       bgColor: "bg-amber-50",
       borderColor: "border-amber-200",
       persona: "Media Planner",
@@ -2316,7 +2384,7 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
     {
       phase: "Optimize",
       icon: TrendingUp,
-      color: "#1f9d72",
+      color: "#12d6a5",
       bgColor: "bg-teal-50",
       borderColor: "border-teal-200",
       persona: "Performance Analyst",
@@ -2336,11 +2404,11 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-[var(--line)] bg-gradient-to-r from-slate-50 via-white to-slate-50 p-5">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--brand-accent)]">Business User Journey</p>
+      <div className="omni-architecture-hero omni-architecture-hero-business rounded-xl p-5">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--omni-lime)]">Business User Journey</p>
         <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Campaign Lifecycle Architecture</h2>
         <p className="mt-2 max-w-3xl text-[13px] text-[var(--muted)]">
-          How marketing teams interact with the Creative Command Center — from planning through optimization.
+          How marketing teams interact with Omni — from planning through optimization.
           Each phase has a primary persona, key touchpoints, and a defined outcome.
         </p>
       </div>
@@ -2462,7 +2530,7 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
   const layers = [
     {
       name: "Presentation Layer",
-      color: "#256b8f",
+      color: "#00b8ff",
       bgColor: "bg-blue-50",
       borderColor: "border-blue-200",
       components: [
@@ -2472,7 +2540,7 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
     },
     {
       name: "Compute Layer",
-      color: "#5b65d8",
+      color: "#6757ff",
       bgColor: "bg-violet-50",
       borderColor: "border-violet-200",
       components: [
@@ -2483,7 +2551,7 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
     },
     {
       name: "Orchestration Layer",
-      color: "#0f9f95",
+      color: "#12d6a5",
       bgColor: "bg-emerald-50",
       borderColor: "border-emerald-200",
       components: [
@@ -2494,7 +2562,7 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
     },
     {
       name: "Storage Layer",
-      color: "#c7793a",
+      color: "#ff7a1a",
       bgColor: "bg-amber-50",
       borderColor: "border-amber-200",
       components: [
@@ -2521,10 +2589,10 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border-2 border-slate-300 bg-gradient-to-br from-slate-100 to-slate-50 p-5">
+      <div className="omni-architecture-hero omni-architecture-hero-platform rounded-xl p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-slate-500">// ARCHITECTURE BLUEPRINT</p>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-[var(--omni-cyan)]">// ARCHITECTURE BLUEPRINT</p>
             <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Platform Reference Architecture</h2>
             <p className="mt-2 max-w-2xl text-[13px] text-[var(--muted)]">
               Four-layer architecture on AWS with Databricks as the unified data + AI platform.
@@ -2666,11 +2734,11 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
 
 function AgentTopology({ data }: { data: AgencyData }) {
   const agents = [
-    { id: "supervisor", name: "Supervisor", type: "Orchestrator", model: "Claude 3.5", tools: ["intent_classifier", "policy_guard", "response_synth"], color: "#13212d" },
-    { id: "genie", name: "Genie Analyst", type: "Data Agent", model: "Genie Space", tools: ["sql_exec", "schema_lookup", "uc_query"], color: "#256b8f" },
-    { id: "scorer", name: "Model Scorer", type: "ML Agent", model: "Serving Endpoint", tools: ["feature_fetch", "model_invoke", "score_explain"], color: "#0f9f95" },
-    { id: "creative", name: "Creative Eval", type: "Content Agent", model: "Vision + LLM", tools: ["asset_analyze", "quality_score", "variant_compare"], color: "#5b65d8" },
-    { id: "activation", name: "Activation Ops", type: "Ops Agent", model: "Tool-use LLM", tools: ["platform_api", "status_check", "alert_trigger"], color: "#c7793a" },
+    { id: "supervisor", name: "Supervisor", type: "Orchestrator", model: "Claude 3.5", tools: ["intent_classifier", "policy_guard", "response_synth"], color: "#c8ff2f" },
+    { id: "genie", name: "Genie Analyst", type: "Data Agent", model: "Genie Space", tools: ["sql_exec", "schema_lookup", "uc_query"], color: "#00b8ff" },
+    { id: "scorer", name: "Model Scorer", type: "ML Agent", model: "Serving Endpoint", tools: ["feature_fetch", "model_invoke", "score_explain"], color: "#12d6a5" },
+    { id: "creative", name: "Creative Eval", type: "Content Agent", model: "Vision + LLM", tools: ["asset_analyze", "quality_score", "variant_compare"], color: "#6757ff" },
+    { id: "activation", name: "Activation Ops", type: "Ops Agent", model: "Tool-use LLM", tools: ["platform_api", "status_check", "alert_trigger"], color: "#ff7a1a" },
   ];
 
   const toolMatrix = [
@@ -2701,10 +2769,10 @@ function AgentTopology({ data }: { data: AgencyData }) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border-2 border-violet-300 bg-gradient-to-br from-violet-50 to-white p-5">
+      <div className="omni-architecture-hero omni-architecture-hero-agent rounded-xl p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-violet-600">// AI SYSTEM DESIGN</p>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-[var(--omni-magenta)]">// AI SYSTEM DESIGN</p>
             <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Multi-Agent Orchestration Architecture</h2>
             <p className="mt-2 max-w-2xl text-[13px] text-[var(--muted)]">
               Supervisor pattern with specialized sub-agents. Each agent has scoped tools, guardrails, and observability via MLflow tracing.
@@ -2943,18 +3011,18 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
     <div>
       <div className="mb-5 text-center">
         <h2 className="text-[24px] font-extrabold text-[var(--ink)]">Marketing Intelligence Data Architecture</h2>
-        <p className="mt-2 text-[13px] font-semibold text-[var(--muted)]">Creative Command Center: end-to-end data and AI flow on Databricks</p>
+        <p className="mt-2 text-[13px] font-semibold text-[var(--muted)]">Omni: end-to-end data and AI flow on Databricks</p>
       </div>
 
       <div className="thin-scrollbar overflow-x-auto pb-2">
         <div className="min-w-[1180px]">
           <div className="grid grid-cols-[190px_38px_170px_38px_520px_38px_300px] gap-0">
-            <motion.div className="rounded-t-xl border border-blue-200 bg-blue-50" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.02 }}>
-              <ArchitectureLaneHeader icon={FileText} title="Data Sources" subtitle="Enterprise systems" color="#256b8f" />
+            <motion.div className="omni-lane-header omni-lane-header-source rounded-t-xl" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.02 }}>
+              <ArchitectureLaneHeader icon={FileText} title="Data Sources" subtitle="Enterprise systems" color="#00b8ff" />
             </motion.div>
             <div />
-            <motion.div className="rounded-t-xl border border-violet-200 bg-violet-50" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-              <ArchitectureLaneHeader icon={RefreshCw} title="Ingestion" subtitle="Jobs / API sync" color="#5b65d8" />
+            <motion.div className="omni-lane-header omni-lane-header-ingestion rounded-t-xl" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+              <ArchitectureLaneHeader icon={RefreshCw} title="Ingestion" subtitle="Jobs / API sync" color="#6757ff" />
             </motion.div>
             <div />
             <motion.div className="rounded-t-xl border border-red-200 bg-red-50" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}>
@@ -2962,10 +3030,10 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
             </motion.div>
             <div />
             <motion.div className="rounded-t-xl border border-emerald-200 bg-emerald-50" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-              <ArchitectureLaneHeader icon={RadioTower} title="Serving & Apps" subtitle="Operational consumption" color="#0f9f95" />
+              <ArchitectureLaneHeader icon={RadioTower} title="Serving & Apps" subtitle="Operational consumption" color="#12d6a5" />
             </motion.div>
 
-            <div className="space-y-5 rounded-b-xl border-x border-b border-blue-200 bg-blue-50/35 p-4">
+            <div className="omni-lane-body omni-lane-body-source space-y-5 rounded-b-xl p-4">
               {ARCHITECTURE_ROWS.map((row, index) => (
                 <ArchitectureCard key={row.source[0]} title={row.source[0]} subtitle={row.source[1]} tone="source" delay={0.05 + index * 0.04} />
               ))}
@@ -2977,7 +3045,7 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
               ))}
             </div>
 
-            <div className="space-y-5 rounded-b-xl border-x border-b border-violet-200 bg-violet-50/35 p-4">
+            <div className="omni-lane-body omni-lane-body-ingestion space-y-5 rounded-b-xl p-4">
               {ARCHITECTURE_ROWS.map((row, index) => (
                 <ArchitectureCard key={row.stream[0]} title={row.stream[0]} subtitle={row.stream[1]} tone="stream" delay={0.22 + index * 0.04} />
               ))}
@@ -3032,19 +3100,19 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
             </div>
           </div>
 
-          <motion.div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/45 p-4" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.05 }}>
+          <motion.div className="omni-info-panel omni-governance-panel mt-4 rounded-xl p-4" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.05 }}>
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[13px] font-bold text-violet-900">Unity Catalog - Governance, Quality & Access Control</p>
+                <p className="text-[13px] font-bold text-[var(--omni-lime)]">Unity Catalog - Governance, Quality & Access Control</p>
                 <p className="mt-1 text-[11px] text-[var(--muted)]">Classification tags, masking policies, table constraints, lineage, and endpoint access boundaries.</p>
               </div>
-              <span className="rounded-md border border-violet-200 bg-white px-2 py-1 font-mono text-[10px] font-semibold text-violet-700">governed</span>
+              <span className="omni-governance-chip rounded-md px-2 py-1 font-mono text-[10px] font-semibold">governed</span>
             </div>
             <div className="grid gap-2 md:grid-cols-5">
               {ARCH_TAGS.map((tag, index) => (
                 <motion.span
                   key={tag}
-                  className="rounded-md border border-violet-200 bg-white px-2 py-1 text-center font-mono text-[10px] font-semibold text-violet-700"
+                  className="omni-governance-chip rounded-md px-2 py-1 text-center font-mono text-[10px] font-semibold"
                   initial={{ opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 1.15 + index * 0.05 }}
@@ -3061,13 +3129,13 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
             </div>
           </motion.div>
 
-          <motion.div className="mt-4 rounded-xl border border-red-200 bg-red-50/35 p-4" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.2 }}>
-            <p className="mb-3 text-[13px] font-bold text-red-900">Platform Services</p>
+          <motion.div className="omni-info-panel omni-platform-services-panel mt-4 rounded-xl p-4" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.2 }}>
+            <p className="mb-3 text-[13px] font-bold text-[var(--omni-cyan)]">Platform Services</p>
             <div className="grid gap-3 md:grid-cols-4">
               {ARCH_PLATFORM_SERVICES.map((service, index) => (
                 <motion.div
                   key={service[0]}
-                  className="rounded-lg border border-red-200 bg-white px-3 py-3 text-center"
+                  className="omni-platform-service-card rounded-lg px-3 py-3 text-center"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 1.3 + index * 0.05 }}
@@ -3135,12 +3203,12 @@ function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void })
     <AnimatePresence>
       {open ? (
         <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <button className="absolute inset-0 cursor-default bg-[#0b1f33]/35 backdrop-blur-[1px]" onClick={onClose} aria-label="Close Ask AI panel" />
+          <button className="absolute inset-0 cursor-default bg-[#11131a]/35 backdrop-blur-[1px]" onClick={onClose} aria-label="Close Ask AI panel" />
           <motion.aside
             role="dialog"
             aria-modal="true"
             aria-label="Ask AI side panel"
-            className="absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-[var(--line)] bg-[var(--panel)] shadow-2xl shadow-[#0b1f33]/20"
+            className="absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-[var(--line)] bg-[var(--panel)] shadow-2xl shadow-[#11131a]/20"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
@@ -3149,10 +3217,10 @@ function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void })
             <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-4">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="brand-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
-                  <Bot size={20} />
+                  <OmniDiamondLogo size={25} />
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-[15px] font-bold">Ask Creative Command Center</p>
+                  <p className="truncate text-[15px] font-bold">Ask Omni</p>
                   <p className="truncate text-[12px] text-[var(--muted)]">Natural language workspace</p>
                 </div>
               </div>
@@ -3184,7 +3252,7 @@ function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void })
             <AskMessageList
               messages={messages}
               loading={loading}
-              emptyText="Ask Creative Command Center about CTR, spend, activation status, creative quality, or ROI."
+              emptyText="Ask Omni about CTR, spend, activation status, creative quality, or ROI."
               className="p-4"
             />
             <AskInputBar input={input} setInput={setInput} loading={loading} submit={submit} />
@@ -3202,7 +3270,7 @@ function AskDesk() {
     <div className="grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
       <Panel className="p-4">
         <div className="brand-mark mb-5 flex h-12 w-12 items-center justify-center rounded-lg">
-          <Bot size={22} />
+          <OmniDiamondLogo size={30} />
         </div>
         <h2 className="text-[22px] font-bold">Ask the activation desk</h2>
         <p className="mt-2 text-[13px] leading-6 text-[var(--muted)]">
