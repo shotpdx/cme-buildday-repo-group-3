@@ -27,3 +27,27 @@ Key joins: all gold tables share `canonical_id`. The campaign funnel (`gold_medi
 - **Volumes:** `/Volumes/cme_outcomes_uswest/media_demo/creatives/` for generated imagery
 
 Anything not listed above (secret scopes, endpoint names, SP grants) is distributed per team on the morning of Build Day.
+
+## Creative Command Center Demo
+
+The `my_project/` directory contains a self-contained **Creative Command Center** demo app that showcases the buy-side campaign management experience.
+
+### Quick Start
+
+```bash
+cd my_project
+npm ci
+npm run build
+databricks bundle deploy -t dev
+databricks bundle run creative_command_center -t dev
+```
+
+**For detailed setup instructions, see [`my_project/SETUP.md`](my_project/SETUP.md).**
+
+### What's Included
+
+- React + FastAPI application deployed as a Databricks App
+- CSV-backed sample data (no external dependencies required)
+- Campaign overview, audience targeting, creative scoring, market analysis
+- Architecture diagrams for Business, Platform, Data & ML, and Agent views
+- Ask AI natural language interface

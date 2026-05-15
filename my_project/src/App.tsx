@@ -52,7 +52,8 @@ import {
 import { feature } from "topojson-client";
 import statesTopology from "us-atlas/states-10m.json";
 
-type View = "overview" | "briefs" | "audiences" | "creatives" | "activations" | "markets" | "ask" | "talktrack";
+type View = "overview" | "briefs" | "audiences" | "creatives" | "activations" | "markets" | "ask";
+type ArchitectureTab = "business" | "data" | "platform" | "agent";
 
 type Dashboard = {
   totals: {
@@ -358,17 +359,6 @@ const JOURNEY_STEPS: JourneyStep[] = [
     icon: Bot,
     color: "#13212d",
   },
-  {
-    id: "talktrack",
-    title: "Talk track",
-    navLabel: "Story",
-    description: "Self-serve narrative, architecture context, and delivery proof points for the demo.",
-    userGoal: "Tell the story, validate the backend setup, and explain how the bundle deploys.",
-    signal: "Story",
-    outcome: "Stakeholder-ready walkthrough",
-    icon: Megaphone,
-    color: "#c7793a",
-  },
 ];
 const NAV_ITEMS: Array<{ id: View; label: string; icon: typeof Gauge }> = [
   { id: "overview", label: "Overview", icon: Gauge },
@@ -378,7 +368,6 @@ const NAV_ITEMS: Array<{ id: View; label: string; icon: typeof Gauge }> = [
   { id: "markets", label: "Markets", icon: MapPinned },
   { id: "activations", label: "Activations", icon: RadioTower },
   { id: "ask", label: "Ask AI", icon: Bot },
-  { id: "talktrack", label: "Talk Track", icon: Megaphone },
 ];
 
 const REGION_SHAPES: Record<string, { path: string; label: { x: number; y: number }; color: string }> = {
@@ -802,6 +791,8 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [askPanelOpen, setAskPanelOpen] = useState(false);
   const [architectureOpen, setArchitectureOpen] = useState(false);
+  const [architectureTab, setArchitectureTab] = useState<ArchitectureTab>("data");
+  const [talkTrackOpen, setTalkTrackOpen] = useState(false);
   const [data, setData] = useState<AgencyData | null>(null);
   const [error, setError] = useState("");
 
@@ -839,6 +830,11 @@ function App() {
     }
     setAskPanelOpen(false);
     setView(nextView);
+  }
+
+  function openArchitecture(tab: ArchitectureTab) {
+    setArchitectureTab(tab);
+    setArchitectureOpen(true);
   }
 
   return (
@@ -901,7 +897,7 @@ function App() {
             </div>
           ) : null}
           <button
-            onClick={() => setArchitectureOpen(true)}
+            onClick={() => openArchitecture("data")}
             title="Architecture"
             className={`flex w-full items-center rounded-md border border-white/10 bg-white/[0.06] text-left text-[12px] font-semibold text-white/72 transition-colors hover:bg-white/10 hover:text-white ${
               sidebarCollapsed ? "h-10 justify-center px-2" : "mt-2 justify-between px-3 py-2"
@@ -910,6 +906,19 @@ function App() {
             <span className={`inline-flex items-center ${sidebarCollapsed ? "" : "gap-2"}`}>
               <Layers3 size={14} />
               {!sidebarCollapsed ? "Architecture" : null}
+            </span>
+            {!sidebarCollapsed ? <ArrowRight size={13} /> : null}
+          </button>
+          <button
+            onClick={() => setTalkTrackOpen(true)}
+            title="Talk Track"
+            className={`flex w-full items-center rounded-md border border-white/10 bg-white/[0.06] text-left text-[12px] font-semibold text-white/72 transition-colors hover:bg-white/10 hover:text-white ${
+              sidebarCollapsed ? "mt-2 h-10 justify-center px-2" : "mt-2 justify-between px-3 py-2"
+            }`}
+          >
+            <span className={`inline-flex items-center ${sidebarCollapsed ? "" : "gap-2"}`}>
+              <Megaphone size={14} />
+              {!sidebarCollapsed ? "Talk Track" : null}
             </span>
             {!sidebarCollapsed ? <ArrowRight size={13} /> : null}
           </button>
@@ -939,7 +948,6 @@ function App() {
                   {view === "activations" && <Activations activations={data.activations} />}
                   {view === "markets" && <Markets markets={data.markets} />}
                   {view === "ask" && <AskDesk />}
-                  {view === "talktrack" && <TalkTrack data={data} />}
                 </motion.div>
               </AnimatePresence>
             </div>
@@ -949,7 +957,14 @@ function App() {
         </div>
       </main>
       <AskSidePanel open={askPanelOpen} onClose={() => setAskPanelOpen(false)} />
-      <SolutionArchitecturePanel open={architectureOpen} onClose={() => setArchitectureOpen(false)} />
+      <SolutionArchitecturePanel
+        open={architectureOpen}
+        onClose={() => setArchitectureOpen(false)}
+        data={data}
+        activeTab={architectureTab}
+        onActiveTab={setArchitectureTab}
+      />
+      <TalkTrackPanel open={talkTrackOpen} onClose={() => setTalkTrackOpen(false)} data={data} />
     </div>
   );
 }
@@ -1064,7 +1079,7 @@ function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view
           </span>
         </div>
         <div className="thin-scrollbar overflow-x-auto pb-1">
-          <div className="grid min-w-[940px] grid-cols-7 gap-3">
+          <div className="grid min-w-[780px] grid-cols-6 gap-3">
             {optimizationSteps.map((step, index) => {
               const Icon = step.icon;
               const isActive = step.id === view;
@@ -1326,28 +1341,6 @@ function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelSta
         activeFilter={type}
         onFilter={setType}
       />
-      <Panel className="p-4">
-        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr_1fr]">
-          <div>
-            <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Model serving verification</p>
-            <h2 className="mt-1 text-[18px] font-bold">
-              {modelStatus.audience_lens_uses_model_serving ? "Audience model endpoint is active" : "Audience lens is CSV-backed"}
-            </h2>
-            <p className="mt-2 text-[12px] leading-5 text-[var(--muted)]">
-              Checked {modelStatus.checked_path}. This branch returns bundled sample data for audience scoring and does not invoke a live Databricks Model Serving endpoint.
-            </p>
-          </div>
-          <div className="rounded-md border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase text-[var(--faint)]">Configured endpoint</p>
-            <p className="mt-1 break-all font-mono text-[12px] font-semibold text-[var(--ink)]">{modelStatus.configured_endpoint ?? "none"}</p>
-          </div>
-          <div className="rounded-md border border-[var(--line)] bg-white px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase text-[var(--faint)]">Runtime mode</p>
-            <p className="mt-1 font-mono text-[12px] font-semibold text-[var(--ink)]">{modelStatus.mode}</p>
-            <p className="mt-1 text-[11px] text-[var(--muted)]">{modelStatus.verified ? "Verification endpoint is live." : "Verification endpoint did not complete."}</p>
-          </div>
-        </div>
-      </Panel>
       <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
         <Panel>
           <SectionHeader title="Reach and match rate" eyebrow="C360 audience inventory" />
@@ -1743,20 +1736,20 @@ function TalkTrack({ data }: { data: AgencyData }) {
   const audienceTable = data.backendTables.tables.find((table) => table.name === "audiences");
   const storyCards = [
     {
-      title: "Start with the operating picture",
-      text: "The overview gives one shared readout across spend, response, quality, and current activity.",
-      icon: Gauge,
+      title: "Stay inside the app",
+      text: "Use this tab as the customer-facing talk track so the demo does not have to jump to a separate architecture diagram.",
+      icon: Megaphone,
       tone: "#256b8f",
     },
     {
-      title: "Move into decision lenses",
-      text: "Briefs, audiences, creative, markets, and activations each answer one operating question.",
+      title: "Narrate brief to activation",
+      text: "The application story starts with the brief, moves through audience, creative scoring, market opportunity, and activation control.",
       icon: Users,
       tone: "#0f9f95",
     },
     {
-      title: "Close with governed execution",
-      text: "FastAPI contracts are stable while the backend can mature from CSV extracts to Lakehouse tables.",
+      title: "Be explicit about reality",
+      text: "Call out what is live in this branch, what is sample-backed, and where Model Serving or Genie can be connected later.",
       icon: Layers3,
       tone: "#5b65d8",
     },
@@ -1768,6 +1761,96 @@ function TalkTrack({ data }: { data: AgencyData }) {
     "databricks bundle deploy -t dev",
     "databricks bundle run creative_command_center -t dev",
   ];
+  const tabStories = [
+    {
+      tab: "Overview",
+      icon: Gauge,
+      story: "Open with the operating picture: campaign health, spend, response, quality, and current operational signals in one place.",
+      graphs: [
+        "KPI cards frame the business scorecard: spend, conversions, impressions, and creative quality.",
+        "The pacing curve shows whether spend is translating into conversion response over time.",
+        "Channel mix explains where budget is concentrated before drilling into individual platform delivery.",
+        "Quality radar and activity stream suggest whether the campaign is ready to scale or needs intervention.",
+      ],
+      transition: "Move to Briefs to show where this operating loop starts.",
+      tone: "#256b8f",
+    },
+    {
+      tab: "Briefs",
+      icon: FileText,
+      story: "Everything starts with the campaign brief: objective, audience intent, budget, owner, status, and asset readiness.",
+      graphs: [
+        "The brief table is the intake queue and approval checkpoint.",
+        "Status filters show which campaigns are still draft, in review, approved, or active.",
+        "Budget and asset counts explain how much work is ready to move into audience and creative planning.",
+      ],
+      transition: "Move to Audience to show how the brief turns into targetable cohorts.",
+      tone: "#256b8f",
+    },
+    {
+      tab: "Audiences",
+      icon: Users,
+      story: "Audience lens compares who we can reach, how well each cohort matches the campaign, and what governance constraints apply.",
+      graphs: [
+        "Reach bars show addressable scale by cohort.",
+        "The match-rate line shows quality of fit, not just audience size.",
+        "The cards surface LTV and eligibility flags so the team can avoid picking a large but poor-fit audience.",
+      ],
+      transition: "Move to Creative to show how selected audiences are matched to assets and performance signals.",
+      tone: "#0f9f95",
+    },
+    {
+      tab: "Creatives",
+      icon: Palette,
+      story: "Creative scoring is about evaluating existing or generated assets for readiness and predicted performance, not claiming pixel generation in this app.",
+      graphs: [
+        "The quality versus predicted CTR chart compares asset readiness against expected response.",
+        "Approval-status filters separate ready assets from drafts and pending review.",
+        "Creative cards connect format, target segment, tags, dimensions, quality, and predicted CTR.",
+        "The story is performance measurement and iteration: which creative should go live, which needs work, and which variants can support A/B testing.",
+      ],
+      transition: "Move to Markets to explain where the strongest creative-audience combinations should be scaled.",
+      tone: "#5b65d8",
+    },
+    {
+      tab: "Markets",
+      icon: MapPinned,
+      story: "Market expansion adds geography to the decision: where to scale, optimize, or test based on reach, spend, CTR, lift, and audience mix.",
+      graphs: [
+        "The national map turns performance data into a regional planning surface.",
+        "Clicking a region exposes the local signal and recommended action.",
+        "Metro drilldown shows where reach and CTR concentrate within a region.",
+        "Reach momentum and audience mix explain whether the recommendation is backed by growth, concentration, or cohort fit.",
+      ],
+      transition: "Move to Activations to show how market decisions become platform execution.",
+      tone: "#c7793a",
+    },
+    {
+      tab: "Activations",
+      icon: RadioTower,
+      story: "Activation control shows the media execution layer: platform spend, status, impressions, CTR, conversions, sync timing, and A/B references.",
+      graphs: [
+        "Spend by platform shows where delivery is live and where budget is concentrated.",
+        "The activation table connects campaign IDs to platform status and response metrics.",
+        "CTR and conversions show whether launched creative is generating measurable response.",
+        "Sync timestamps reinforce that this is the operational control surface for trafficking and measurement.",
+      ],
+      transition: "Use Ask AI as an overlay for follow-up questions, not as the final workflow step.",
+      tone: "#1f9d72",
+    },
+    {
+      tab: "Ask AI",
+      icon: Bot,
+      story: "Ask AI is decision support that can open from the workflow without forcing the presenter to leave the current context.",
+      graphs: [
+        "Suggested prompts demonstrate the intended natural-language workflow.",
+        "Structured answer tables show how Genie or SQL-backed answers could appear behind the same UI.",
+        "In this branch the endpoint returns sample-backed answers, which is why the talk track should frame Genie as a production connection point.",
+      ],
+      transition: "Use Talk Track when you need to explain architecture, data source reality, or the demo story without leaving the app.",
+      tone: "#13212d",
+    },
+  ];
 
   return (
     <div className="space-y-5">
@@ -1775,11 +1858,11 @@ function TalkTrack({ data }: { data: AgencyData }) {
         <div className="grid gap-5 p-5 xl:grid-cols-[1fr_0.9fr]">
           <div>
             <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Self-serve story</p>
-            <h2 className="mt-2 text-[28px] font-extrabold tracking-tight">Creative Command Center turns campaign work into a governed activation loop.</h2>
+            <h2 className="mt-2 text-[28px] font-extrabold tracking-tight">Talk Track supports the demo narrative without becoming part of the workflow.</h2>
             <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[var(--muted)]">
-              The demo starts with executive campaign health, then follows the operator through brief intake, audience choice,
-              creative scoring, regional opportunity, activation monitoring, and AI-assisted analysis. The same API contracts
-              can sit on sample CSVs for a portable demo or on Databricks tables for a production build.
+              The working product journey stays focused on brief intake, audience matching, creative performance scoring,
+              regional opportunity, and activation control. This tab is only a presenter aid: it keeps the architecture,
+              data provenance, and implementation caveats available inside the app while the customer-facing flow remains clean.
             </p>
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               {storyCards.map((card) => {
@@ -1819,6 +1902,38 @@ function TalkTrack({ data }: { data: AgencyData }) {
               </p>
             </div>
           </div>
+        </div>
+      </Panel>
+
+      <Panel>
+        <SectionHeader title="Presenter guide by tab" eyebrow="What each view is saying" />
+        <div className="grid gap-px overflow-hidden rounded-b-lg bg-[var(--line)] lg:grid-cols-2">
+          {tabStories.map((item) => {
+            const Icon = item.icon;
+            return (
+              <article key={item.tab} className="bg-white p-4">
+                <div className="mb-3 flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white" style={{ background: item.tone }}>
+                    <Icon size={17} />
+                  </span>
+                  <div>
+                    <p className="text-[14px] font-bold">{item.tab}</p>
+                    <p className="mt-1 text-[12px] leading-5 text-[var(--muted)]">{item.story}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {item.graphs.map((graph) => (
+                    <div key={graph} className="rounded-md border border-[var(--line)] bg-[var(--panel-soft)]/55 px-3 py-2 text-[12px] leading-5 text-[var(--muted)]">
+                      {graph}
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-semibold leading-5 text-[var(--ink)]">
+                  {item.transition}
+                </p>
+              </article>
+            );
+          })}
         </div>
       </Panel>
 
@@ -1987,7 +2102,72 @@ function AskInputBar({
   );
 }
 
-function SolutionArchitecturePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+function TalkTrackPanel({ open, onClose, data }: { open: boolean; onClose: () => void; data: AgencyData | null }) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <button className="absolute inset-0 cursor-default bg-[#0b1f33]/35 backdrop-blur-[1px]" onClick={onClose} aria-label="Close talk track" />
+          <motion.aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Talk track"
+            className="absolute right-0 top-0 flex h-full w-full max-w-[1320px] flex-col border-l border-[var(--line)] bg-[var(--panel)] shadow-2xl shadow-[#0b1f33]/20"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 34, stiffness: 300 }}
+          >
+            <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="brand-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+                  <Megaphone size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[16px] font-bold">Talk Track</p>
+                  <p className="truncate text-[12px] text-[var(--muted)]">Presenter narrative and tab-by-tab demo story</p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--line)] bg-white text-[var(--muted)] hover:text-[var(--ink)]"
+                aria-label="Close"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <div className="thin-scrollbar flex-1 overflow-y-auto p-5">
+              {data ? <TalkTrack data={data} /> : <LoadingState />}
+            </div>
+          </motion.aside>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+function SolutionArchitecturePanel({
+  open,
+  onClose,
+  data,
+  activeTab,
+  onActiveTab,
+}: {
+  open: boolean;
+  onClose: () => void;
+  data: AgencyData | null;
+  activeTab: ArchitectureTab;
+  onActiveTab: (tab: ArchitectureTab) => void;
+}) {
   useEffect(() => {
     if (!open) return;
     function handleKeyDown(event: KeyboardEvent) {
@@ -2008,6 +2188,12 @@ function SolutionArchitecturePanel({ open, onClose }: { open: boolean; onClose: 
     "/api/backend-tables",
     "/api/model-status",
     "/api/ask",
+  ];
+  const tabs: Array<{ id: ArchitectureTab; label: string; icon: typeof Gauge; description: string }> = [
+    { id: "business", label: "Business Overview", icon: Gauge, description: "CMO questions and outcomes" },
+    { id: "data", label: "Data & ML Pipeline", icon: Layers3, description: "Data sources through serving" },
+    { id: "platform", label: "Platform Architecture", icon: RadioTower, description: "AWS hosting, VPN, and auth" },
+    { id: "agent", label: "Agent Topology", icon: Bot, description: "Future Ask AI orchestration" },
   ];
 
   return (
@@ -2031,8 +2217,8 @@ function SolutionArchitecturePanel({ open, onClose }: { open: boolean; onClose: 
                   <Layers3 size={20} />
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-[16px] font-bold">End-to-end solution architecture</p>
-                  <p className="truncate text-[12px] text-[var(--muted)]">Creative Command Center data, AI, and app flow on Databricks</p>
+                  <p className="truncate text-[16px] font-bold">Architecture menu</p>
+                  <p className="truncate text-[12px] text-[var(--muted)]">Business lens, platform flow, data and ML pipeline, and agent topology</p>
                 </div>
               </div>
               <button
@@ -2044,13 +2230,656 @@ function SolutionArchitecturePanel({ open, onClose }: { open: boolean; onClose: 
               </button>
             </div>
 
+            <div className="border-b border-[var(--line)] bg-[var(--panel-soft)]/65 p-3">
+              <div className="thin-scrollbar flex gap-2 overflow-x-auto">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const selected = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => onActiveTab(tab.id)}
+                      className={`min-w-[190px] rounded-lg border px-3 py-2 text-left transition-colors ${
+                        selected ? "border-[var(--brand-accent)] bg-white text-[var(--ink)] shadow-sm" : "border-[var(--line)] bg-white/60 text-[var(--muted)] hover:bg-white"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 text-[12px] font-bold">
+                        <Icon size={15} />
+                        {tab.label}
+                      </span>
+                      <span className="mt-1 block text-[11px] leading-4 text-[var(--faint)]">{tab.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="thin-scrollbar flex-1 overflow-y-auto p-5">
-              <EndToEndArchitectureDiagram endpoints={endpoints} />
+              {activeTab === "business" && (data ? <BusinessArchitectureOverview data={data} /> : <LoadingState />)}
+              {activeTab === "data" && <EndToEndArchitectureDiagram endpoints={endpoints} />}
+              {activeTab === "platform" && (data ? <PlatformArchitecture data={data} /> : <LoadingState />)}
+              {activeTab === "agent" && (data ? <AgentTopology data={data} /> : <LoadingState />)}
             </div>
           </motion.aside>
         </motion.div>
       ) : null}
     </AnimatePresence>
+  );
+}
+
+function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
+  const userJourney = [
+    {
+      phase: "Plan",
+      icon: Gauge,
+      color: "#256b8f",
+      bgColor: "bg-blue-50",
+      borderColor: "border-blue-200",
+      persona: "CMO / Campaign Lead",
+      goal: "Set campaign objectives and budget allocation",
+      touchpoints: ["Overview dashboard", "Budget planner", "Goal setting"],
+      outcome: "Approved campaign brief with KPI targets",
+    },
+    {
+      phase: "Target",
+      icon: Users,
+      color: "#0f9f95",
+      bgColor: "bg-emerald-50",
+      borderColor: "border-emerald-200",
+      persona: "Audience Strategist",
+      goal: "Identify and prioritize audience segments",
+      touchpoints: ["Audience explorer", "Cohort builder", "Match analysis"],
+      outcome: "Activation-ready audience lists",
+    },
+    {
+      phase: "Create",
+      icon: Palette,
+      color: "#5b65d8",
+      bgColor: "bg-violet-50",
+      borderColor: "border-violet-200",
+      persona: "Creative Director",
+      goal: "Evaluate and approve creative assets",
+      touchpoints: ["Asset library", "Quality scores", "A/B test setup"],
+      outcome: "Approved creatives with test variants",
+    },
+    {
+      phase: "Activate",
+      icon: Megaphone,
+      color: "#c7793a",
+      bgColor: "bg-amber-50",
+      borderColor: "border-amber-200",
+      persona: "Media Planner",
+      goal: "Deploy campaigns to platforms",
+      touchpoints: ["Platform sync", "Trafficking status", "Go-live checklist"],
+      outcome: "Live campaigns across channels",
+    },
+    {
+      phase: "Optimize",
+      icon: TrendingUp,
+      color: "#1f9d72",
+      bgColor: "bg-teal-50",
+      borderColor: "border-teal-200",
+      persona: "Performance Analyst",
+      goal: "Monitor and improve campaign performance",
+      touchpoints: ["Real-time metrics", "Market insights", "Ask AI"],
+      outcome: "Optimized spend and improved ROI",
+    },
+  ];
+
+  const dataFlows = [
+    { from: "1P Data", to: "Audience Builder", type: "CRM, transactions, web" },
+    { from: "Partner Data", to: "Enrichment", type: "Demographics, intent" },
+    { from: "Creative Assets", to: "Quality Scoring", type: "Images, video, copy" },
+    { from: "Platform APIs", to: "Activation Sync", type: "Meta, Google, TTD" },
+    { from: "Performance Data", to: "Dashboards", type: "Impressions, conversions" },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-[var(--line)] bg-gradient-to-r from-slate-50 via-white to-slate-50 p-5">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--brand-accent)]">Business User Journey</p>
+        <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Campaign Lifecycle Architecture</h2>
+        <p className="mt-2 max-w-3xl text-[13px] text-[var(--muted)]">
+          How marketing teams interact with the Creative Command Center — from planning through optimization.
+          Each phase has a primary persona, key touchpoints, and a defined outcome.
+        </p>
+      </div>
+
+      <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-5">
+        <p className="mb-4 text-[11px] font-bold uppercase text-slate-500">User Journey Phases</p>
+        <div className="grid grid-cols-5 gap-3">
+          {userJourney.map((phase, index) => {
+            const Icon = phase.icon;
+            return (
+              <div key={phase.phase} className="relative">
+                {index < userJourney.length - 1 && (
+                  <div className="absolute right-0 top-8 z-10 hidden h-0.5 w-6 -translate-x-0 translate-y-0 bg-slate-300 lg:block" style={{ right: "-12px" }} />
+                )}
+                <div className={`rounded-xl border-2 ${phase.borderColor} ${phase.bgColor} p-4`}>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg text-white" style={{ background: phase.color }}>
+                      <Icon size={16} />
+                    </div>
+                    <div>
+                      <p className="text-[14px] font-bold" style={{ color: phase.color }}>{phase.phase}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-lg bg-white/80 p-2">
+                    <p className="text-[10px] font-semibold text-[var(--faint)]">Persona</p>
+                    <p className="text-[11px] font-bold text-[var(--ink)]">{phase.persona}</p>
+                  </div>
+                  <p className="mt-2 text-[11px] text-[var(--muted)]">{phase.goal}</p>
+                  <div className="mt-3 space-y-1">
+                    {phase.touchpoints.map((tp) => (
+                      <div key={tp} className="rounded bg-white/60 px-2 py-1 text-[10px] font-medium text-[var(--ink)]">{tp}</div>
+                    ))}
+                  </div>
+                  <div className="mt-3 border-t border-white pt-2">
+                    <p className="text-[9px] font-semibold uppercase text-[var(--faint)]">Outcome</p>
+                    <p className="text-[10px] font-semibold" style={{ color: phase.color }}>{phase.outcome}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-[var(--line)] bg-white p-5">
+          <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Data Flow Architecture</p>
+          <h3 className="mt-1 text-[16px] font-extrabold">How Data Moves Through the System</h3>
+          <div className="mt-4 space-y-2">
+            {dataFlows.map((flow) => (
+              <div key={flow.from} className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-slate-50/50 p-3">
+                <div className="min-w-[100px] rounded bg-blue-100 px-2 py-1 text-center">
+                  <p className="text-[11px] font-bold text-blue-800">{flow.from}</p>
+                </div>
+                <div className="flex items-center gap-1 text-slate-400">
+                  <div className="h-0.5 w-4 bg-slate-300" />
+                  <ArrowRight size={14} />
+                  <div className="h-0.5 w-4 bg-slate-300" />
+                </div>
+                <div className="min-w-[120px] rounded bg-emerald-100 px-2 py-1 text-center">
+                  <p className="text-[11px] font-bold text-emerald-800">{flow.to}</p>
+                </div>
+                <p className="flex-1 text-[10px] text-[var(--muted)]">{flow.type}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-xl border border-[var(--line)] bg-white p-4">
+            <p className="text-[11px] font-bold uppercase text-[var(--faint)]">User Roles & Access</p>
+            <div className="mt-3 space-y-2">
+              {[
+                { role: "CMO / Executive", access: "Read all, approve budgets", views: "Overview, Reports" },
+                { role: "Campaign Manager", access: "Full campaign control", views: "All lenses" },
+                { role: "Audience Analyst", access: "Audience data, segments", views: "Audiences, Markets" },
+                { role: "Creative Team", access: "Asset management", views: "Creative, Briefs" },
+                { role: "Media Ops", access: "Platform activation", views: "Activations, Sync" },
+              ].map((user) => (
+                <div key={user.role} className="flex items-center justify-between rounded-lg border border-[var(--line)] bg-slate-50/50 px-3 py-2">
+                  <p className="text-[11px] font-bold text-[var(--ink)]">{user.role}</p>
+                  <p className="text-[10px] text-[var(--muted)]">{user.access}</p>
+                  <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700">{user.views}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-blue-600" />
+              <p className="text-[12px] font-bold text-blue-900">Ask AI — Cross-Phase Intelligence</p>
+            </div>
+            <p className="mt-2 text-[11px] text-blue-800">AI assistant spans all phases, helping users:</p>
+            <div className="mt-2 grid grid-cols-2 gap-1">
+              {["Answer campaign questions", "Surface insights", "Recommend actions", "Explain metrics"].map((cap) => (
+                <div key={cap} className="rounded bg-white/70 px-2 py-1 text-[10px] font-medium text-blue-700">{cap}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-[11px] font-bold uppercase text-slate-500">Integration Touchpoints</p>
+        <div className="mt-3 grid grid-cols-6 gap-2">
+          {["CRM Systems", "Data Warehouse", "Ad Platforms", "Analytics", "Creative Tools", "Reporting"].map((system) => (
+            <div key={system} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center">
+              <p className="text-[11px] font-semibold text-[var(--ink)]">{system}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlatformArchitecture({ data }: { data: AgencyData }) {
+  const layers = [
+    {
+      name: "Presentation Layer",
+      color: "#256b8f",
+      bgColor: "bg-blue-50",
+      borderColor: "border-blue-200",
+      components: [
+        { name: "React App", type: "Frontend", spec: "Vite + TypeScript" },
+        { name: "FastAPI", type: "API Gateway", spec: "Python 3.11" },
+      ],
+    },
+    {
+      name: "Compute Layer",
+      color: "#5b65d8",
+      bgColor: "bg-violet-50",
+      borderColor: "border-violet-200",
+      components: [
+        { name: "SQL Warehouse", type: "Analytics", spec: "Serverless" },
+        { name: "Model Serving", type: "ML Inference", spec: "GPU/CPU" },
+        { name: "Genie", type: "NL Query", spec: "AI-powered" },
+      ],
+    },
+    {
+      name: "Orchestration Layer",
+      color: "#0f9f95",
+      bgColor: "bg-emerald-50",
+      borderColor: "border-emerald-200",
+      components: [
+        { name: "Lakeflow", type: "Pipelines", spec: "Declarative ETL" },
+        { name: "Workflows", type: "Jobs", spec: "Scheduled/Triggered" },
+        { name: "MLflow", type: "ML Ops", spec: "Experiment tracking" },
+      ],
+    },
+    {
+      name: "Storage Layer",
+      color: "#c7793a",
+      bgColor: "bg-amber-50",
+      borderColor: "border-amber-200",
+      components: [
+        { name: "Unity Catalog", type: "Governance", spec: `${data.backendTables.tables.length} tables` },
+        { name: "Delta Lake", type: "Tables", spec: "ACID transactions" },
+        { name: "S3", type: "Object Store", spec: "AWS managed" },
+      ],
+    },
+  ];
+
+  const securityZones = [
+    { zone: "Public Internet", trust: "Untrusted", controls: ["WAF", "DDoS protection", "TLS 1.3"] },
+    { zone: "DMZ / Edge", trust: "Semi-trusted", controls: ["Load balancer", "API gateway", "Rate limiting"] },
+    { zone: "Application", trust: "Trusted", controls: ["Service mesh", "mTLS", "RBAC"] },
+    { zone: "Data", trust: "Highly trusted", controls: ["Encryption at rest", "Column masking", "Row filters"] },
+  ];
+
+  const authFlow = [
+    { step: "1", name: "SSO Redirect", from: "Browser", to: "Enterprise IdP", protocol: "SAML/OIDC" },
+    { step: "2", name: "Token Issue", from: "IdP", to: "Databricks", protocol: "JWT" },
+    { step: "3", name: "Workspace Auth", from: "Databricks", to: "Unity Catalog", protocol: "SCIM" },
+    { step: "4", name: "Data Access", from: "UC", to: "S3/Delta", protocol: "IAM" },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border-2 border-slate-300 bg-gradient-to-br from-slate-100 to-slate-50 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-slate-500">// ARCHITECTURE BLUEPRINT</p>
+            <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Platform Reference Architecture</h2>
+            <p className="mt-2 max-w-2xl text-[13px] text-[var(--muted)]">
+              Four-layer architecture on AWS with Databricks as the unified data + AI platform.
+              Security zones enforce defense in depth from edge to data.
+            </p>
+          </div>
+          <div className="hidden shrink-0 font-mono text-[10px] text-slate-400 md:block">
+            <p>Region: us-west-2</p>
+            <p>VPC: 10.0.0.0/16</p>
+            <p>AZs: 3</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-4">
+        <p className="mb-4 font-mono text-[11px] font-bold uppercase text-slate-500">Layered Architecture</p>
+        <div className="space-y-3">
+          {layers.map((layer) => (
+            <div key={layer.name} className={`rounded-lg border-2 ${layer.borderColor} ${layer.bgColor} p-3`}>
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded" style={{ background: layer.color }}>
+                  <Layers3 size={16} className="text-white" />
+                </div>
+                <p className="text-[13px] font-bold" style={{ color: layer.color }}>{layer.name}</p>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                {layer.components.map((comp) => (
+                  <div key={comp.name} className="rounded-md border border-white bg-white p-2 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[12px] font-bold text-[var(--ink)]">{comp.name}</p>
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[9px] text-slate-500">{comp.type}</span>
+                    </div>
+                    <p className="mt-1 font-mono text-[10px] text-[var(--muted)]">{comp.spec}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border-2 border-red-200 bg-red-50/50 p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-red-500">
+              <RadioTower size={14} className="text-white" />
+            </div>
+            <p className="font-mono text-[11px] font-bold uppercase text-red-700">Security Zones</p>
+          </div>
+          <div className="mt-3 space-y-2">
+            {securityZones.map((zone, i) => (
+              <div key={zone.zone} className="flex items-center gap-3 rounded-md border border-red-200 bg-white p-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-red-100 to-red-200 font-mono text-[10px] font-bold text-red-700">
+                  {i + 1}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold text-[var(--ink)]">{zone.zone}</p>
+                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${
+                      zone.trust === "Untrusted" ? "bg-red-100 text-red-700" :
+                      zone.trust === "Semi-trusted" ? "bg-amber-100 text-amber-700" :
+                      zone.trust === "Trusted" ? "bg-emerald-100 text-emerald-700" :
+                      "bg-blue-100 text-blue-700"
+                    }`}>{zone.trust}</span>
+                  </div>
+                  <p className="mt-0.5 truncate font-mono text-[9px] text-[var(--muted)]">{zone.controls.join(" · ")}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-500">
+              <Users size={14} className="text-white" />
+            </div>
+            <p className="font-mono text-[11px] font-bold uppercase text-blue-700">Authentication Flow</p>
+          </div>
+          <div className="mt-3 space-y-2">
+            {authFlow.map((step) => (
+              <div key={step.step} className="flex items-center gap-2 rounded-md border border-blue-200 bg-white p-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500 font-mono text-[10px] font-bold text-white">
+                  {step.step}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-bold text-[var(--ink)]">{step.name}</p>
+                  <p className="font-mono text-[9px] text-[var(--muted)]">{step.from} → {step.to}</p>
+                </div>
+                <span className="rounded bg-blue-100 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-blue-700">{step.protocol}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/50 p-4">
+        <p className="font-mono text-[11px] font-bold uppercase text-emerald-700">Network Topology</p>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          {[
+            { name: "VPN / Direct Connect", desc: "Corporate → AWS private path", icon: "🔒" },
+            { name: "PrivateLink", desc: "Private API endpoints in VPC", icon: "🔗" },
+            { name: "NAT Gateway", desc: "Controlled outbound egress", icon: "🌐" },
+            { name: "Security Groups", desc: "Instance-level firewall", icon: "🛡️" },
+          ].map((item) => (
+            <div key={item.name} className="rounded-lg border border-emerald-200 bg-white p-3">
+              <p className="text-[16px]">{item.icon}</p>
+              <p className="mt-1 text-[12px] font-bold text-[var(--ink)]">{item.name}</p>
+              <p className="mt-0.5 text-[10px] text-[var(--muted)]">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[var(--line)] bg-slate-50 p-4">
+        <p className="font-mono text-[11px] font-bold uppercase text-slate-500">Component Inventory</p>
+        <div className="mt-3 overflow-hidden rounded-lg border border-[var(--line)] bg-white">
+          <table className="w-full text-[11px]">
+            <thead className="bg-slate-100">
+              <tr>
+                <th className="px-3 py-2 text-left font-mono font-bold text-slate-600">Service</th>
+                <th className="px-3 py-2 text-left font-mono font-bold text-slate-600">Type</th>
+                <th className="px-3 py-2 text-left font-mono font-bold text-slate-600">Status</th>
+                <th className="px-3 py-2 text-left font-mono font-bold text-slate-600">Config</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--line)] font-mono">
+              <tr><td className="px-3 py-2">Databricks App</td><td className="px-3 py-2 text-[var(--muted)]">Presentation</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">React + FastAPI</td></tr>
+              <tr><td className="px-3 py-2">SQL Warehouse</td><td className="px-3 py-2 text-[var(--muted)]">Compute</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">Serverless</td></tr>
+              <tr><td className="px-3 py-2">Model Serving</td><td className="px-3 py-2 text-[var(--muted)]">ML</td><td className="px-3 py-2"><span className={`rounded px-1.5 py-0.5 ${data.modelStatus.configured_endpoint ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{data.modelStatus.configured_endpoint ? "Configured" : "None"}</span></td><td className="px-3 py-2 text-[var(--muted)]">GPU endpoint</td></tr>
+              <tr><td className="px-3 py-2">Unity Catalog</td><td className="px-3 py-2 text-[var(--muted)]">Governance</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">{data.backendTables.tables.length} tables governed</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgentTopology({ data }: { data: AgencyData }) {
+  const agents = [
+    { id: "supervisor", name: "Supervisor", type: "Orchestrator", model: "Claude 3.5", tools: ["intent_classifier", "policy_guard", "response_synth"], color: "#13212d" },
+    { id: "genie", name: "Genie Analyst", type: "Data Agent", model: "Genie Space", tools: ["sql_exec", "schema_lookup", "uc_query"], color: "#256b8f" },
+    { id: "scorer", name: "Model Scorer", type: "ML Agent", model: "Serving Endpoint", tools: ["feature_fetch", "model_invoke", "score_explain"], color: "#0f9f95" },
+    { id: "creative", name: "Creative Eval", type: "Content Agent", model: "Vision + LLM", tools: ["asset_analyze", "quality_score", "variant_compare"], color: "#5b65d8" },
+    { id: "activation", name: "Activation Ops", type: "Ops Agent", model: "Tool-use LLM", tools: ["platform_api", "status_check", "alert_trigger"], color: "#c7793a" },
+  ];
+
+  const toolMatrix = [
+    { tool: "Unity Catalog", genie: true, scorer: true, creative: false, activation: false, desc: "Governed table access" },
+    { tool: "SQL Warehouse", genie: true, scorer: false, creative: false, activation: true, desc: "Analytics queries" },
+    { tool: "Model Serving", genie: false, scorer: true, creative: true, activation: false, desc: "ML inference" },
+    { tool: "Feature Store", genie: false, scorer: true, creative: false, activation: false, desc: "Real-time features" },
+    { tool: "Vector Search", genie: true, scorer: false, creative: true, activation: false, desc: "Semantic retrieval" },
+    { tool: "MLflow", genie: false, scorer: true, creative: true, activation: false, desc: "Experiment tracking" },
+  ];
+
+  const stateMachine = [
+    { state: "IDLE", desc: "Awaiting user input", next: ["ROUTING"] },
+    { state: "ROUTING", desc: "Supervisor classifies intent", next: ["ANALYTICS", "SCORING", "CREATIVE", "OPS"] },
+    { state: "ANALYTICS", desc: "Genie/SQL query execution", next: ["SYNTHESIS"] },
+    { state: "SCORING", desc: "Model inference + explain", next: ["SYNTHESIS"] },
+    { state: "CREATIVE", desc: "Asset evaluation", next: ["SYNTHESIS"] },
+    { state: "OPS", desc: "Platform status check", next: ["SYNTHESIS"] },
+    { state: "SYNTHESIS", desc: "Response assembly", next: ["IDLE"] },
+  ];
+
+  const guardrails = [
+    { name: "PII Filter", type: "Input", desc: "Redact sensitive data before processing" },
+    { name: "Policy Guard", type: "Routing", desc: "Block unauthorized tool access" },
+    { name: "Hallucination Check", type: "Output", desc: "Verify claims against source data" },
+    { name: "Token Budget", type: "Resource", desc: "Cap context length per turn" },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border-2 border-violet-300 bg-gradient-to-br from-violet-50 to-white p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-violet-600">// AI SYSTEM DESIGN</p>
+            <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Multi-Agent Orchestration Architecture</h2>
+            <p className="mt-2 max-w-2xl text-[13px] text-[var(--muted)]">
+              Supervisor pattern with specialized sub-agents. Each agent has scoped tools, guardrails, and observability via MLflow tracing.
+            </p>
+          </div>
+          <div className="hidden shrink-0 rounded-lg border border-violet-200 bg-white p-3 md:block">
+            <p className="font-mono text-[10px] text-violet-500">Runtime</p>
+            <p className="font-mono text-[14px] font-bold text-[var(--ink)]">{data.modelStatus.mode.replace("_", " ")}</p>
+            <p className="mt-1 font-mono text-[10px] text-[var(--muted)]">/api/ask</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-4">
+        <p className="mb-4 font-mono text-[11px] font-bold uppercase text-slate-500">Agent Graph</p>
+        <div className="flex items-start justify-center gap-6">
+          <div className="flex flex-col items-center">
+            <div className="rounded-xl border-2 border-slate-800 bg-slate-800 p-4 text-center shadow-lg">
+              <Bot size={24} className="mx-auto text-white" />
+              <p className="mt-2 text-[13px] font-bold text-white">Supervisor</p>
+              <p className="text-[10px] text-slate-300">Orchestrator</p>
+            </div>
+            <div className="mt-2 h-8 w-0.5 bg-slate-300" />
+            <div className="flex gap-2">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-0.5 w-8 bg-slate-300" />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-4 gap-3">
+          {agents.slice(1).map((agent) => (
+            <div key={agent.id} className="rounded-lg border-2 p-3" style={{ borderColor: agent.color, background: `${agent.color}10` }}>
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded" style={{ background: agent.color }}>
+                  <Bot size={16} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-[12px] font-bold" style={{ color: agent.color }}>{agent.name}</p>
+                  <p className="font-mono text-[9px] text-[var(--muted)]">{agent.type}</p>
+                </div>
+              </div>
+              <div className="mt-2 rounded bg-white/70 px-2 py-1">
+                <p className="font-mono text-[9px] text-[var(--muted)]">Model: {agent.model}</p>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {agent.tools.map((tool) => (
+                  <span key={tool} className="rounded bg-white/80 px-1.5 py-0.5 font-mono text-[8px]" style={{ color: agent.color }}>{tool}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/50 p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-500">
+              <Layers3 size={14} className="text-white" />
+            </div>
+            <p className="font-mono text-[11px] font-bold uppercase text-emerald-700">Tool Capability Matrix</p>
+          </div>
+          <div className="mt-3 overflow-hidden rounded-lg border border-emerald-200 bg-white">
+            <table className="w-full text-[10px]">
+              <thead className="bg-emerald-100">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-mono font-bold text-emerald-700">Tool</th>
+                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Genie</th>
+                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Scorer</th>
+                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Creative</th>
+                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Ops</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-emerald-100 font-mono">
+                {toolMatrix.map((row) => (
+                  <tr key={row.tool}>
+                    <td className="px-2 py-1.5 font-semibold">{row.tool}</td>
+                    <td className="px-2 py-1.5 text-center">{row.genie ? "✓" : "–"}</td>
+                    <td className="px-2 py-1.5 text-center">{row.scorer ? "✓" : "–"}</td>
+                    <td className="px-2 py-1.5 text-center">{row.creative ? "✓" : "–"}</td>
+                    <td className="px-2 py-1.5 text-center">{row.activation ? "✓" : "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-xl border-2 border-amber-200 bg-amber-50/50 p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-amber-500">
+              <Activity size={14} className="text-white" />
+            </div>
+            <p className="font-mono text-[11px] font-bold uppercase text-amber-700">State Machine</p>
+          </div>
+          <div className="mt-3 space-y-1.5">
+            {stateMachine.map((s, i) => (
+              <div key={s.state} className="flex items-center gap-2 rounded-md border border-amber-200 bg-white px-2 py-1.5">
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[9px] font-bold ${
+                  s.state === "IDLE" ? "bg-slate-200 text-slate-600" :
+                  s.state === "ROUTING" ? "bg-violet-200 text-violet-700" :
+                  s.state === "SYNTHESIS" ? "bg-emerald-200 text-emerald-700" :
+                  "bg-amber-200 text-amber-700"
+                }`}>{i}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-[10px] font-bold text-[var(--ink)]">{s.state}</p>
+                  <p className="truncate text-[9px] text-[var(--muted)]">{s.desc}</p>
+                </div>
+                <span className="font-mono text-[8px] text-amber-600">→ {s.next.join(", ")}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_1.5fr]">
+        <div className="rounded-xl border-2 border-red-200 bg-red-50/50 p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-red-500">
+              <RadioTower size={14} className="text-white" />
+            </div>
+            <p className="font-mono text-[11px] font-bold uppercase text-red-700">Guardrails</p>
+          </div>
+          <div className="mt-3 space-y-2">
+            {guardrails.map((g) => (
+              <div key={g.name} className="rounded-md border border-red-200 bg-white p-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold text-[var(--ink)]">{g.name}</p>
+                  <span className="rounded bg-red-100 px-1.5 py-0.5 font-mono text-[8px] font-semibold text-red-700">{g.type}</span>
+                </div>
+                <p className="mt-0.5 text-[9px] text-[var(--muted)]">{g.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-500">
+              <LineChartIcon size={14} className="text-white" />
+            </div>
+            <p className="font-mono text-[11px] font-bold uppercase text-blue-700">MLOps Integration</p>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {[
+              { name: "MLflow Tracing", desc: "End-to-end request tracing", status: "Active" },
+              { name: "Experiment Tracking", desc: "Prompt/model versioning", status: "Active" },
+              { name: "Model Registry", desc: "Serving endpoint management", status: data.modelStatus.configured_endpoint ? "Configured" : "Pending" },
+              { name: "Evaluation", desc: "Quality metrics & evals", status: "Active" },
+            ].map((item) => (
+              <div key={item.name} className="rounded-md border border-blue-200 bg-white p-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold text-[var(--ink)]">{item.name}</p>
+                  <span className={`rounded px-1.5 py-0.5 font-mono text-[8px] font-semibold ${
+                    item.status === "Active" ? "bg-emerald-100 text-emerald-700" :
+                    item.status === "Configured" ? "bg-blue-100 text-blue-700" :
+                    "bg-slate-100 text-slate-500"
+                  }`}>{item.status}</span>
+                </div>
+                <p className="mt-0.5 text-[9px] text-[var(--muted)]">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 rounded-md border border-blue-200 bg-white p-2">
+            <p className="font-mono text-[10px] font-bold text-blue-700">Observability Stack</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {["Traces", "Spans", "Latency", "Token count", "Error rate", "Feedback"].map((m) => (
+                <span key={m} className="rounded bg-blue-100 px-1.5 py-0.5 font-mono text-[9px] text-blue-700">{m}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
