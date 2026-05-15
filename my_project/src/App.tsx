@@ -52,7 +52,7 @@ import {
 import { feature } from "topojson-client";
 import statesTopology from "us-atlas/states-10m.json";
 
-type View = "overview" | "briefs" | "audiences" | "creatives" | "activations" | "markets" | "ask";
+type View = "overview" | "briefs" | "audiences" | "creatives" | "activations" | "markets" | "ask" | "talktrack";
 
 type Dashboard = {
   totals: {
@@ -163,6 +163,33 @@ type MarketRegion = {
   audience_mix: Array<{ name: string; value: number }>;
 };
 
+type BackendTable = {
+  name: string;
+  endpoint: string;
+  lakehouse_table: string;
+  description: string;
+  source: string;
+  path: string | null;
+  rows: number;
+  loaded: boolean;
+};
+
+type BackendTables = {
+  data_dir: string;
+  bundle_ready: boolean;
+  tables: BackendTable[];
+};
+
+type ModelStatus = {
+  audience_lens_uses_model_serving: boolean;
+  serving_endpoint_configured: boolean;
+  configured_endpoint: string | null;
+  mode: string;
+  checked_path: string;
+  verified: boolean;
+  evidence: string[];
+};
+
 type AgencyData = {
   dashboard: Dashboard;
   briefs: Brief[];
@@ -170,6 +197,8 @@ type AgencyData = {
   creatives: Creative[];
   activations: Activation[];
   markets: MarketRegion[];
+  backendTables: BackendTables;
+  modelStatus: ModelStatus;
 };
 
 type AskResult = {
@@ -329,6 +358,17 @@ const JOURNEY_STEPS: JourneyStep[] = [
     icon: Bot,
     color: "#13212d",
   },
+  {
+    id: "talktrack",
+    title: "Talk track",
+    navLabel: "Story",
+    description: "Self-serve narrative, architecture context, and delivery proof points for the demo.",
+    userGoal: "Tell the story, validate the backend setup, and explain how the bundle deploys.",
+    signal: "Story",
+    outcome: "Stakeholder-ready walkthrough",
+    icon: Megaphone,
+    color: "#c7793a",
+  },
 ];
 const NAV_ITEMS: Array<{ id: View; label: string; icon: typeof Gauge }> = [
   { id: "overview", label: "Overview", icon: Gauge },
@@ -338,6 +378,7 @@ const NAV_ITEMS: Array<{ id: View; label: string; icon: typeof Gauge }> = [
   { id: "markets", label: "Markets", icon: MapPinned },
   { id: "activations", label: "Activations", icon: RadioTower },
   { id: "ask", label: "Ask AI", icon: Bot },
+  { id: "talktrack", label: "Talk Track", icon: Megaphone },
 ];
 
 const REGION_SHAPES: Record<string, { path: string; label: { x: number; y: number }; color: string }> = {
@@ -768,15 +809,17 @@ function App() {
     let ignore = false;
     async function loadData() {
       try {
-        const [dashboard, briefs, audiences, creatives, activations, markets] = await Promise.all([
+        const [dashboard, briefs, audiences, creatives, activations, markets, backendTables, modelStatus] = await Promise.all([
           fetchJson<Dashboard>("/api/dashboard"),
           fetchJson<Brief[]>("/api/briefs"),
           fetchJson<Audience[]>("/api/audiences"),
           fetchJson<Creative[]>("/api/creatives"),
           fetchJson<Activation[]>("/api/activations"),
           fetchJson<MarketRegion[]>("/api/markets"),
+          fetchJson<BackendTables>("/api/backend-tables"),
+          fetchJson<ModelStatus>("/api/model-status"),
         ]);
-        if (!ignore) setData({ dashboard, briefs, audiences, creatives, activations, markets });
+        if (!ignore) setData({ dashboard, briefs, audiences, creatives, activations, markets, backendTables, modelStatus });
       } catch (err) {
         if (!ignore) setError(err instanceof Error ? err.message : "Unable to load app data");
       }
@@ -891,11 +934,12 @@ function App() {
                 >
                   {view === "overview" && <Overview data={data} />}
                   {view === "briefs" && <Briefs briefs={data.briefs} />}
-                  {view === "audiences" && <Audiences audiences={data.audiences} />}
+                  {view === "audiences" && <Audiences audiences={data.audiences} modelStatus={data.modelStatus} />}
                   {view === "creatives" && <Creatives creatives={data.creatives} />}
                   {view === "activations" && <Activations activations={data.activations} />}
                   {view === "markets" && <Markets markets={data.markets} />}
                   {view === "ask" && <AskDesk />}
+                  {view === "talktrack" && <TalkTrack data={data} />}
                 </motion.div>
               </AnimatePresence>
             </div>
@@ -1020,7 +1064,7 @@ function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view
           </span>
         </div>
         <div className="thin-scrollbar overflow-x-auto pb-1">
-          <div className="grid min-w-[780px] grid-cols-6 gap-3">
+          <div className="grid min-w-[940px] grid-cols-7 gap-3">
             {optimizationSteps.map((step, index) => {
               const Icon = step.icon;
               const isActive = step.id === view;
@@ -1260,7 +1304,7 @@ function Briefs({ briefs }: { briefs: Brief[] }) {
   );
 }
 
-function Audiences({ audiences }: { audiences: Audience[] }) {
+function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelStatus: ModelStatus }) {
   const [type, setType] = useState("all");
   const filtered = audiences
     .filter((audience) => type === "all" || audience.definition_type === type)
@@ -1282,6 +1326,28 @@ function Audiences({ audiences }: { audiences: Audience[] }) {
         activeFilter={type}
         onFilter={setType}
       />
+      <Panel className="p-4">
+        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr_1fr]">
+          <div>
+            <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Model serving verification</p>
+            <h2 className="mt-1 text-[18px] font-bold">
+              {modelStatus.audience_lens_uses_model_serving ? "Audience model endpoint is active" : "Audience lens is CSV-backed"}
+            </h2>
+            <p className="mt-2 text-[12px] leading-5 text-[var(--muted)]">
+              Checked {modelStatus.checked_path}. This branch returns bundled sample data for audience scoring and does not invoke a live Databricks Model Serving endpoint.
+            </p>
+          </div>
+          <div className="rounded-md border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase text-[var(--faint)]">Configured endpoint</p>
+            <p className="mt-1 break-all font-mono text-[12px] font-semibold text-[var(--ink)]">{modelStatus.configured_endpoint ?? "none"}</p>
+          </div>
+          <div className="rounded-md border border-[var(--line)] bg-white px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase text-[var(--faint)]">Runtime mode</p>
+            <p className="mt-1 font-mono text-[12px] font-semibold text-[var(--ink)]">{modelStatus.mode}</p>
+            <p className="mt-1 text-[11px] text-[var(--muted)]">{modelStatus.verified ? "Verification endpoint is live." : "Verification endpoint did not complete."}</p>
+          </div>
+        </div>
+      </Panel>
       <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
         <Panel>
           <SectionHeader title="Reach and match rate" eyebrow="C360 audience inventory" />
@@ -1671,6 +1737,160 @@ function Markets({ markets }: { markets: MarketRegion[] }) {
   );
 }
 
+function TalkTrack({ data }: { data: AgencyData }) {
+  const loadedTables = data.backendTables.tables.filter((table) => table.loaded);
+  const totalRows = data.backendTables.tables.reduce((sum, table) => sum + table.rows, 0);
+  const audienceTable = data.backendTables.tables.find((table) => table.name === "audiences");
+  const storyCards = [
+    {
+      title: "Start with the operating picture",
+      text: "The overview gives one shared readout across spend, response, quality, and current activity.",
+      icon: Gauge,
+      tone: "#256b8f",
+    },
+    {
+      title: "Move into decision lenses",
+      text: "Briefs, audiences, creative, markets, and activations each answer one operating question.",
+      icon: Users,
+      tone: "#0f9f95",
+    },
+    {
+      title: "Close with governed execution",
+      text: "FastAPI contracts are stable while the backend can mature from CSV extracts to Lakehouse tables.",
+      icon: Layers3,
+      tone: "#5b65d8",
+    },
+  ];
+  const deploySteps = [
+    "cd my_project",
+    "npm ci",
+    "npm run build",
+    "databricks bundle deploy -t dev",
+    "databricks bundle run creative_command_center -t dev",
+  ];
+
+  return (
+    <div className="space-y-5">
+      <Panel className="overflow-hidden">
+        <div className="grid gap-5 p-5 xl:grid-cols-[1fr_0.9fr]">
+          <div>
+            <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Self-serve story</p>
+            <h2 className="mt-2 text-[28px] font-extrabold tracking-tight">Creative Command Center turns campaign work into a governed activation loop.</h2>
+            <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[var(--muted)]">
+              The demo starts with executive campaign health, then follows the operator through brief intake, audience choice,
+              creative scoring, regional opportunity, activation monitoring, and AI-assisted analysis. The same API contracts
+              can sit on sample CSVs for a portable demo or on Databricks tables for a production build.
+            </p>
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              {storyCards.map((card) => {
+                const Icon = card.icon;
+                return (
+                  <div key={card.title} className="rounded-lg border border-[var(--line)] bg-white p-4">
+                    <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-md text-white" style={{ background: card.tone }}>
+                      <Icon size={17} />
+                    </span>
+                    <p className="text-[13px] font-bold">{card.title}</p>
+                    <p className="mt-2 text-[12px] leading-5 text-[var(--muted)]">{card.text}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="grid content-start gap-3">
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-soft)] p-4">
+              <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Bundle data setup</p>
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                <MetricMini label="CSV extracts" value={`${loadedTables.length}`} />
+                <MetricMini label="Rows" value={formatNumber(totalRows)} />
+                <MetricMini label="Bundle" value={data.backendTables.bundle_ready ? "Ready" : "Check"} />
+              </div>
+              <p className="mt-3 text-[12px] leading-5 text-[var(--muted)]">
+                Sample backend tables deploy with the Databricks App under <span className="font-mono">{data.backendTables.data_dir}</span>.
+              </p>
+            </div>
+            <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+              <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Audience model check</p>
+              <p className="mt-2 text-[14px] font-bold">
+                {data.modelStatus.audience_lens_uses_model_serving ? "Real Model Serving call detected" : "No real Model Serving call detected"}
+              </p>
+              <p className="mt-2 text-[12px] leading-5 text-[var(--muted)]">
+                Audience lens reads <span className="font-mono">{data.modelStatus.checked_path}</span> from{" "}
+                <span className="font-mono">{audienceTable?.path ?? "embedded fallback"}</span>.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <Panel>
+          <SectionHeader title="Backend tables in this bundle" eyebrow="CSV extracts to FastAPI contracts" />
+          <div className="overflow-x-auto thin-scrollbar">
+            <table className="w-full min-w-[960px] text-left">
+              <thead className="bg-[var(--panel-soft)] text-[11px] uppercase text-[var(--muted)]">
+                <tr>
+                  <th className="px-4 py-3">Extract</th>
+                  <th className="px-4 py-3">API</th>
+                  <th className="px-4 py-3">Lakehouse target</th>
+                  <th className="px-4 py-3 text-right">Rows</th>
+                  <th className="px-4 py-3">Path</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--line)]">
+                {data.backendTables.tables.map((table) => (
+                  <tr key={table.name} className="hover:bg-[var(--panel-soft)]/70">
+                    <td className="px-4 py-4">
+                      <p className="text-[13px] font-semibold">{table.name}</p>
+                      <p className="mt-1 max-w-[260px] text-[11px] leading-4 text-[var(--muted)]">{table.description}</p>
+                    </td>
+                    <td className="px-4 py-4 font-mono text-[11px] text-[var(--muted)]">{table.endpoint}</td>
+                    <td className="px-4 py-4 font-mono text-[11px] text-[var(--muted)]">{table.lakehouse_table}</td>
+                    <td className="px-4 py-4 text-right font-mono text-[13px]">{formatNumber(table.rows)}</td>
+                    <td className="px-4 py-4 font-mono text-[11px] text-[var(--muted)]">{table.path ?? "embedded fallback"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+
+        <div className="space-y-5">
+          <Panel>
+            <SectionHeader title="Deployment talk track" eyebrow="Repo to Databricks App" />
+            <div className="space-y-2 p-4">
+              {deploySteps.map((step, index) => (
+                <div key={step} className="flex items-center gap-3 rounded-md border border-[var(--line)] bg-white px-3 py-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--panel-soft)] font-mono text-[11px] font-semibold text-[var(--muted)]">
+                    {index + 1}
+                  </span>
+                  <span className="font-mono text-[12px] text-[var(--ink)]">{step}</span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel>
+            <SectionHeader title="Architecture summary" eyebrow="What changes in production" />
+            <div className="space-y-3 p-4 text-[12px] leading-5 text-[var(--muted)]">
+              <p>
+                The portable branch serves CSV extracts through FastAPI so the app can deploy without workspace-specific tables,
+                warehouses, Genie spaces, or serving endpoints.
+              </p>
+              <p>
+                The production path replaces CSV extracts with Unity Catalog tables, keeps the same <span className="font-mono">/api/*</span> contracts,
+                and can add Genie, SQL Warehouse, Lakebase, or Model Serving behind the API boundary.
+              </p>
+              <p>
+                Current model verification is explicit: Audience lens does not call a real Model Serving endpoint in this branch.
+              </p>
+            </div>
+          </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function useAskAssistant() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -1777,7 +1997,18 @@ function SolutionArchitecturePanel({ open, onClose }: { open: boolean; onClose: 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
-  const endpoints = ["/api/health", "/api/dashboard", "/api/briefs", "/api/audiences", "/api/creatives", "/api/activations", "/api/markets", "/api/ask"];
+  const endpoints = [
+    "/api/health",
+    "/api/dashboard",
+    "/api/briefs",
+    "/api/audiences",
+    "/api/creatives",
+    "/api/activations",
+    "/api/markets",
+    "/api/backend-tables",
+    "/api/model-status",
+    "/api/ask",
+  ];
 
   return (
     <AnimatePresence>
@@ -2036,7 +2267,7 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
         <div className="rounded-lg border border-[var(--line)] bg-white p-4">
           <p className="text-[13px] font-semibold">Implementation path</p>
           <div className="mt-3 space-y-2 text-[12px] leading-5 text-[var(--muted)]">
-            <p>Today the demo uses FastAPI JSON contracts and in-memory data. The architecture canvas shows the production path behind the same contracts.</p>
+            <p>Today the demo uses FastAPI JSON contracts and bundled CSV extracts. The architecture canvas shows the production path behind the same contracts.</p>
             <p>Databricks tables, Genie, SQL Warehouse, and Lakebase can be added without changing the React command center surface.</p>
           </div>
         </div>

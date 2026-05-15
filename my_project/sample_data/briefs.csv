@@ -1,0 +1,5 @@
+brief_id,brief_name,brand_name,campaign_objective,target_audience_description,status,created_ts,concepts_count,creatives_count,budget,owner
+BRIEF-001,Summer Campaign 2026,CME Streaming,Lift tune-in intent for premium sports and live-event bundles,"High-value fans, 25-44, cross-device streamers",Active,2026-05-01,7,34,420000,Agency Pod A
+BRIEF-002,Winback Flight Q2,CME Streaming,Recover recently churned subscribers with event-led offers,Lapsed subscribers with sports affinity,Approved,2026-04-28,5,18,275000,Retention Desk
+BRIEF-003,Family Movie Nights,CME Streaming,Grow household watch time through family content discovery,"Families, shared accounts, weekend viewing",In Review,2026-04-22,4,11,180000,Brand Studio
+BRIEF-004,Trial-to-Paid Conversion,CME Streaming,Move trial users to annual plans before day 21,Trial users with 3+ sessions in first week,Draft,2026-04-19,3,6,125000,Growth Lab

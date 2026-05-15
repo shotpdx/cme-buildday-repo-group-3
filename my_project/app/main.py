@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
+import csv
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -15,6 +16,73 @@ from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
+SAMPLE_DATA_DIR = Path(os.getenv("SAMPLE_DATA_DIR", "sample_data"))
+if not SAMPLE_DATA_DIR.is_absolute():
+    SAMPLE_DATA_DIR = ROOT / SAMPLE_DATA_DIR
+DATA_LOAD_SOURCES: dict[str, dict[str, Any]] = {}
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _read_csv_rows(table_name: str) -> list[dict[str, str]] | None:
+    path = SAMPLE_DATA_DIR / f"{table_name}.csv"
+    if not path.exists():
+        DATA_LOAD_SOURCES[table_name] = {
+            "source": "embedded_fallback",
+            "path": _display_path(path),
+            "rows": 0,
+            "loaded": False,
+        }
+        return None
+
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        rows = list(csv.DictReader(handle))
+
+    DATA_LOAD_SOURCES[table_name] = {
+        "source": "csv_extract",
+        "path": _display_path(path),
+        "rows": len(rows),
+        "loaded": True,
+    }
+    return rows
+
+
+def _as_bool(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _as_int(value: str) -> int:
+    return int(value.strip())
+
+
+def _as_float(value: str) -> float:
+    return float(value.strip())
+
+
+def _as_optional(value: str) -> str | None:
+    clean = value.strip()
+    return clean or None
+
+
+def _split_semicolon(value: str) -> list[str]:
+    return [part.strip() for part in value.split(";") if part.strip()]
+
+
+def _load_csv_table(
+    table_name: str,
+    fallback: list[dict[str, Any]],
+    parser: Callable[[dict[str, str]], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows = _read_csv_rows(table_name)
+    if rows is None:
+        DATA_LOAD_SOURCES[table_name]["rows"] = len(fallback)
+        return fallback
+    return [parser(row) for row in rows]
 
 app = FastAPI(title="Creative Command Center API", version="1.0.0")
 
@@ -535,6 +603,239 @@ MOCK_RESPONSES = {
 }
 
 
+def _parse_brief(row: dict[str, str]) -> dict[str, Any]:
+    return {
+        "brief_id": row["brief_id"],
+        "brief_name": row["brief_name"],
+        "brand_name": row["brand_name"],
+        "campaign_objective": row["campaign_objective"],
+        "target_audience_description": row["target_audience_description"],
+        "status": row["status"],
+        "created_ts": row["created_ts"],
+        "concepts_count": _as_int(row["concepts_count"]),
+        "creatives_count": _as_int(row["creatives_count"]),
+        "budget": _as_int(row["budget"]),
+        "owner": row["owner"],
+    }
+
+
+def _parse_audience(row: dict[str, str]) -> dict[str, Any]:
+    return {
+        "cohort_id": row["cohort_id"],
+        "cohort_name": row["cohort_name"],
+        "cohort_description": row["cohort_description"],
+        "definition_type": row["definition_type"],
+        "personalization_granularity": row["personalization_granularity"],
+        "estimated_reach": _as_int(row["estimated_reach"]),
+        "is_region_allowed": _as_bool(row["is_region_allowed"]),
+        "is_channel_allowed": _as_bool(row["is_channel_allowed"]),
+        "is_frequency_capped": _as_bool(row["is_frequency_capped"]),
+        "status": row["status"],
+        "last_updated_ts": row["last_updated_ts"],
+        "match_rate": _as_float(row["match_rate"]),
+        "avg_ltv": _as_int(row["avg_ltv"]),
+    }
+
+
+def _parse_creative(row: dict[str, str]) -> dict[str, Any]:
+    return {
+        "creative_asset_id": row["creative_asset_id"],
+        "asset_name": row["asset_name"],
+        "asset_type": row["asset_type"],
+        "format": row["format"],
+        "width_px": _as_int(row["width_px"]),
+        "height_px": _as_int(row["height_px"]),
+        "approval_status": row["approval_status"],
+        "target_segment": row["target_segment"],
+        "content_tags": _split_semicolon(row["content_tags"]),
+        "generation_model": row["generation_model"],
+        "created_at": row["created_at"],
+        "quality_score": _as_int(row["quality_score"]),
+        "predicted_ctr": _as_float(row["predicted_ctr"]),
+    }
+
+
+def _parse_activation(row: dict[str, str]) -> dict[str, Any]:
+    return {
+        "activation_id": row["activation_id"],
+        "creative_asset_id": row["creative_asset_id"],
+        "campaign_id": row["campaign_id"],
+        "destination_platform": row["destination_platform"],
+        "trafficking_status": row["trafficking_status"],
+        "impressions": _as_int(row["impressions"]),
+        "clicks": _as_int(row["clicks"]),
+        "conversions": _as_int(row["conversions"]),
+        "cost": _as_float(row["cost"]),
+        "ab_test_id": _as_optional(row["ab_test_id"]),
+        "last_sync_ts": row["last_sync_ts"],
+    }
+
+
+def _parse_performance_row(row: dict[str, str]) -> dict[str, Any]:
+    return {
+        "date": row["date"],
+        "spend": _as_int(row["spend"]),
+        "conversions": _as_int(row["conversions"]),
+        "ctr": _as_float(row["ctr"]),
+    }
+
+
+def _parse_channel_row(row: dict[str, str]) -> dict[str, Any]:
+    return {"name": row["name"], "value": _as_int(row["value"]), "spend": _as_int(row["spend"])}
+
+
+def _parse_quality_row(row: dict[str, str]) -> dict[str, Any]:
+    return {"axis": row["axis"], "score": _as_int(row["score"])}
+
+
+def _parse_activity_row(row: dict[str, str]) -> dict[str, Any]:
+    return {"event": row["event"], "detail": row["detail"], "time": row["time"], "type": row["type"]}
+
+
+def _load_markets_from_csv(fallback: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    market_rows = _read_csv_rows("markets")
+    if market_rows is None:
+        DATA_LOAD_SOURCES["markets"]["rows"] = len(fallback)
+        _read_csv_rows("market_cities")
+        _read_csv_rows("market_trend")
+        _read_csv_rows("market_audience_mix")
+        return fallback
+
+    cities_by_region: dict[str, list[dict[str, Any]]] = {}
+    for row in _read_csv_rows("market_cities") or []:
+        cities_by_region.setdefault(row["region_id"], []).append(
+            {
+                "name": row["name"],
+                "state": row["state"],
+                "reach": _as_int(row["reach"]),
+                "ctr": _as_float(row["ctr"]),
+                "lift": _as_int(row["lift"]),
+            }
+        )
+
+    trend_by_region: dict[str, list[dict[str, Any]]] = {}
+    for row in _read_csv_rows("market_trend") or []:
+        trend_by_region.setdefault(row["region_id"], []).append(
+            {
+                "week": row["week"],
+                "reach": _as_int(row["reach"]),
+                "conversions": _as_int(row["conversions"]),
+            }
+        )
+
+    mix_by_region: dict[str, list[dict[str, Any]]] = {}
+    for row in _read_csv_rows("market_audience_mix") or []:
+        mix_by_region.setdefault(row["region_id"], []).append({"name": row["name"], "value": _as_int(row["value"])})
+
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "short_name": row["short_name"],
+            "states": _split_semicolon(row["states"]),
+            "reach": _as_int(row["reach"]),
+            "spend": _as_int(row["spend"]),
+            "ctr": _as_float(row["ctr"]),
+            "conversion_lift": _as_float(row["conversion_lift"]),
+            "priority": row["priority"],
+            "signal": row["signal"],
+            "top_audience": row["top_audience"],
+            "recommended_action": row["recommended_action"],
+            "cities": cities_by_region.get(row["id"], []),
+            "trend": trend_by_region.get(row["id"], []),
+            "audience_mix": mix_by_region.get(row["id"], []),
+        }
+        for row in market_rows
+    ]
+
+
+BRIEFS = _load_csv_table("briefs", BRIEFS, _parse_brief)
+AUDIENCES = _load_csv_table("audiences", AUDIENCES, _parse_audience)
+CREATIVES = _load_csv_table("creatives", CREATIVES, _parse_creative)
+ACTIVATIONS = _load_csv_table("activations", ACTIVATIONS, _parse_activation)
+PERFORMANCE_TREND = _load_csv_table("performance_trend", PERFORMANCE_TREND, _parse_performance_row)
+CHANNEL_MIX = _load_csv_table("channel_mix", CHANNEL_MIX, _parse_channel_row)
+QUALITY_RADAR = _load_csv_table("quality_radar", QUALITY_RADAR, _parse_quality_row)
+ACTIVITY = _load_csv_table("activity", ACTIVITY, _parse_activity_row)
+MARKET_REGIONS = _load_markets_from_csv(MARKET_REGIONS)
+
+
+BACKEND_TABLES = [
+    {
+        "name": "briefs",
+        "endpoint": "/api/briefs",
+        "lakehouse_table": "gold_media_creative_briefs",
+        "description": "Campaign brief intake, objectives, budgets, status, and owner context.",
+    },
+    {
+        "name": "audiences",
+        "endpoint": "/api/audiences",
+        "lakehouse_table": "gold_buyside_audience_cohort",
+        "description": "Audience lens cohorts with reach, match rate, value, and governance flags.",
+    },
+    {
+        "name": "creatives",
+        "endpoint": "/api/creatives",
+        "lakehouse_table": "gold_buyside_generated_creatives",
+        "description": "Generated creative assets with approval, quality, and predicted CTR fields.",
+    },
+    {
+        "name": "activations",
+        "endpoint": "/api/activations",
+        "lakehouse_table": "gold_buyside_campaign_activation",
+        "description": "Trafficking status, platform delivery, cost, clicks, and conversion metrics.",
+    },
+    {
+        "name": "performance_trend",
+        "endpoint": "/api/dashboard",
+        "lakehouse_table": "gold_activation_kpi",
+        "description": "Dashboard pacing curve for spend, conversions, and CTR.",
+    },
+    {
+        "name": "channel_mix",
+        "endpoint": "/api/dashboard",
+        "lakehouse_table": "gold_channel_investment_mix",
+        "description": "Channel allocation and spend mix for the overview dashboard.",
+    },
+    {
+        "name": "quality_radar",
+        "endpoint": "/api/dashboard",
+        "lakehouse_table": "gold_creative_quality_scorecard",
+        "description": "Creative quality gate scores used by the overview radar.",
+    },
+    {
+        "name": "activity",
+        "endpoint": "/api/dashboard",
+        "lakehouse_table": "gold_campaign_activity_stream",
+        "description": "Operational activity feed for campaign sync, quality, and alert events.",
+    },
+    {
+        "name": "markets",
+        "endpoint": "/api/markets",
+        "lakehouse_table": "gold_market_opportunity",
+        "description": "Regional opportunity, recommendation, and media signal summary.",
+    },
+    {
+        "name": "market_cities",
+        "endpoint": "/api/markets",
+        "lakehouse_table": "gold_market_metro_detail",
+        "description": "Metro-level reach and performance details embedded in market responses.",
+    },
+    {
+        "name": "market_trend",
+        "endpoint": "/api/markets",
+        "lakehouse_table": "gold_market_reach_trend",
+        "description": "Four-week regional reach and conversion trend embedded in market responses.",
+    },
+    {
+        "name": "market_audience_mix",
+        "endpoint": "/api/markets",
+        "lakehouse_table": "gold_market_audience_mix",
+        "description": "Regional audience mix percentages embedded in market responses.",
+    },
+]
+
+
 class AskRequest(BaseModel):
     question: str
 
@@ -561,6 +862,51 @@ def _totals() -> dict[str, Any]:
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/backend-tables")
+async def backend_tables() -> dict[str, Any]:
+    return {
+        "data_dir": _display_path(SAMPLE_DATA_DIR),
+        "bundle_ready": True,
+        "tables": [
+            {
+                **table,
+                **DATA_LOAD_SOURCES.get(
+                    table["name"],
+                    {
+                        "source": "unknown",
+                        "path": None,
+                        "rows": 0,
+                        "loaded": False,
+                    },
+                ),
+            }
+            for table in BACKEND_TABLES
+        ],
+    }
+
+
+@app.get("/api/model-status")
+async def model_status() -> dict[str, Any]:
+    endpoint_name = (
+        os.getenv("AUDIENCE_MODEL_SERVING_ENDPOINT")
+        or os.getenv("DATABRICKS_MODEL_SERVING_ENDPOINT")
+        or os.getenv("MODEL_SERVING_ENDPOINT")
+    )
+    return {
+        "audience_lens_uses_model_serving": False,
+        "serving_endpoint_configured": bool(endpoint_name),
+        "configured_endpoint": endpoint_name,
+        "mode": "csv_sample_backend",
+        "checked_path": "/api/audiences",
+        "verified": True,
+        "evidence": [
+            "The Audience lens fetches /api/audiences through the FastAPI backend.",
+            "The FastAPI /api/audiences handler returns bundled CSV sample rows.",
+            "This branch has no server-side call to a Databricks Model Serving endpoint for Audience lens scoring.",
+        ],
+    }
 
 
 @app.get("/api/dashboard")

@@ -1,6 +1,7 @@
 # Databricks Asset Bundle for the self-contained Creative Command Center app.
-# The default deployment only creates the Databricks App and does not require
-# any workspace-specific catalogs, schemas, SQL warehouses, or source tables.
+# The default deployment creates the Databricks App and ships CSV extracts under
+# sample_data/ so the backend tables are available without workspace-specific
+# catalogs, schemas, SQL warehouses, or source tables.
 bundle:
   name: creative-command-center
   uuid: 82d5ee1f-d361-41a7-821f-ea8c9af061c5

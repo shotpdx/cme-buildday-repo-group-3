@@ -2,3 +2,7 @@ command:
   - python
   - -m
   - app.main
+
+env:
+  - name: SAMPLE_DATA_DIR
+    value: sample_data

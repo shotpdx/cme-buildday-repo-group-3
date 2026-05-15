@@ -1,0 +1,6 @@
+id,name,short_name,states,reach,spend,ctr,conversion_lift,priority,signal,top_audience,recommended_action
+west,West Coast,West,CA;OR;WA;NV;AZ,428000,74400,1.34,18.2,Scale,Sports affinity and annual-plan lookalikes are over-indexing in coastal metros.,Live Sports Loyalists,Increase CTV and paid-social frequency caps for championship-week creative.
+central,Central,Central,TX;OK;KS;CO;MO;AR;LA,376000,52650,1.08,12.7,Optimize,Family co-viewing audiences respond to weekend slate messaging.,Family Co-Viewing,Shift display and email creative toward household value bundles.
+midwest,Midwest,Midwest,IL;MI;WI;MN;IA;IN;OH,312000,43800,0.97,9.5,Test,Winback cohorts are sizable but creative fatigue is rising in paid social.,Churn Risk: Sports,Run offer-led A/B test and suppress high-fatigue households for 72 hours.
+southeast,Southeast,SE,FL;GA;NC;SC;TN;AL;MS,354000,49850,1.19,15.4,Scale,Live sports and family bundles are both beating national CPA targets.,Live Sports Loyalists,Launch localized story creative around weekend live-event reminders.
+northeast,Northeast,NE,NY;NJ;PA;MA;CT;MD;VA,401000,63500,1.11,13.8,Optimize,Premium upgrade lookalikes are dense with high CTV completion rates.,Premium Upgrade Lookalikes,Prioritize annual-plan offer in CTV and retarget with display frequency controls.
