@@ -19,6 +19,10 @@ targets:
     default: true
     variables:
       app_name: creative-command-center-dev
+  omni:
+    mode: development
+    variables:
+      app_name: omni-command-center-dev
   prod:
     mode: production
     variables:
