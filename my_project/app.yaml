@@ -6,3 +6,13 @@ command:
 env:
   - name: SAMPLE_DATA_DIR
     value: sample_data
+  - name: APP_DATA_SOURCE
+    value: databricks
+  - name: PIPELINE_CATALOG
+    value: cme_outcomes_uswest
+  - name: PIPELINE_SCHEMA
+    value: lakefoundry
+  - name: SOURCE_CATALOG
+    value: cme_outcomes_uswest
+  - name: SOURCE_SCHEMA
+    value: media_demo

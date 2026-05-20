@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import csv
+import time
 from datetime import date, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
 
@@ -20,6 +22,16 @@ SAMPLE_DATA_DIR = Path(os.getenv("SAMPLE_DATA_DIR", "sample_data"))
 if not SAMPLE_DATA_DIR.is_absolute():
     SAMPLE_DATA_DIR = ROOT / SAMPLE_DATA_DIR
 DATA_LOAD_SOURCES: dict[str, dict[str, Any]] = {}
+DATA_BACKEND_ERRORS: list[str] = []
+
+APP_DATA_SOURCE = os.getenv("APP_DATA_SOURCE", os.getenv("DATA_SOURCE", "csv")).strip().lower()
+USE_PIPELINE_DATA = APP_DATA_SOURCE in {"databricks", "pipeline", "warehouse"} or os.getenv(
+    "USE_PIPELINE_DATA", ""
+).strip().lower() in {"1", "true", "yes", "y"}
+PIPELINE_CATALOG = os.getenv("PIPELINE_CATALOG", os.getenv("DATABRICKS_CATALOG", "cme_outcomes_uswest"))
+PIPELINE_SCHEMA = os.getenv("PIPELINE_SCHEMA", os.getenv("DATABRICKS_SCHEMA", "lakefoundry"))
+SOURCE_CATALOG = os.getenv("SOURCE_CATALOG", os.getenv("PIPELINE_SOURCE_CATALOG", PIPELINE_CATALOG))
+SOURCE_SCHEMA = os.getenv("SOURCE_SCHEMA", os.getenv("PIPELINE_SOURCE_SCHEMA", "media_demo"))
 
 
 def _display_path(path: Path) -> str:
@@ -83,6 +95,149 @@ def _load_csv_table(
         DATA_LOAD_SOURCES[table_name]["rows"] = len(fallback)
         return fallback
     return [parser(row) for row in rows]
+
+
+def _as_int_value(value: Any, default: int = 0) -> int:
+    if value is None or value == "":
+        return default
+    return int(float(str(value)))
+
+
+def _as_float_value(value: Any, default: float = 0.0) -> float:
+    if value is None or value == "":
+        return default
+    return float(value)
+
+
+def _as_bool_value(value: Any, default: bool = False) -> bool:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _as_text(value: Any, default: str = "") -> str:
+    if value is None:
+        return default
+    return str(value)
+
+
+def _split_tags(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [part.strip() for part in str(value).replace(";", ",").split(",") if part.strip()]
+
+
+def _sql_identifier(part: str) -> str:
+    clean = part.strip()
+    if not clean.replace("_", "").isalnum():
+        raise ValueError(f"Unsafe SQL identifier: {part}")
+    return f"`{clean}`"
+
+
+def _full_table(catalog: str, schema: str, table: str) -> str:
+    return ".".join([_sql_identifier(catalog), _sql_identifier(schema), _sql_identifier(table)])
+
+
+def _pipeline_table(table: str) -> str:
+    return _full_table(PIPELINE_CATALOG, PIPELINE_SCHEMA, table)
+
+
+def _source_table(table: str) -> str:
+    return _full_table(SOURCE_CATALOG, SOURCE_SCHEMA, table)
+
+
+def _table_source(table_name: str, full_name: str, rows: int) -> None:
+    DATA_LOAD_SOURCES[table_name] = {
+        "source": "databricks_sql",
+        "path": full_name.replace("`", ""),
+        "rows": rows,
+        "loaded": True,
+    }
+
+
+def _table_error(table_name: str, error: Exception) -> None:
+    DATA_BACKEND_ERRORS.append(f"{table_name}: {error}")
+    existing = DATA_LOAD_SOURCES.get(table_name, {})
+    DATA_LOAD_SOURCES[table_name] = {
+        **existing,
+        "source": f"{existing.get('source', 'csv_extract')}_fallback",
+        "loaded": bool(existing.get("loaded", False)),
+        "error": str(error),
+    }
+
+
+def _warehouse_id(client: Any) -> str:
+    warehouse_id = (
+        os.getenv("DATABRICKS_WAREHOUSE_ID")
+        or os.getenv("DATABRICKS_SQL_WAREHOUSE_ID")
+        or os.getenv("SQL_WAREHOUSE_ID")
+    )
+    if warehouse_id:
+        return warehouse_id
+
+    warehouses = list(client.warehouses.list())
+    if not warehouses:
+        raise RuntimeError("No Databricks SQL warehouses are available")
+
+    def state_value(warehouse: Any) -> str:
+        state = getattr(warehouse, "state", "")
+        return getattr(state, "value", str(state))
+
+    running = next((warehouse for warehouse in warehouses if state_value(warehouse).upper() == "RUNNING"), None)
+    selected = running or warehouses[0]
+    selected_id = getattr(selected, "id", None)
+    if not selected_id:
+        raise RuntimeError("Could not determine a Databricks SQL warehouse id")
+    return selected_id
+
+
+@lru_cache(maxsize=1)
+def _workspace_client() -> Any:
+    from databricks.sdk import WorkspaceClient
+
+    return WorkspaceClient()
+
+
+def _execute_sql(statement: str, row_limit: int = 100) -> list[dict[str, Any]]:
+    from databricks.sdk.service.sql import (
+        Disposition,
+        ExecuteStatementRequestOnWaitTimeout,
+        Format,
+        StatementState,
+    )
+
+    client = _workspace_client()
+    response = client.statement_execution.execute_statement(
+        statement=statement,
+        warehouse_id=_warehouse_id(client),
+        catalog=PIPELINE_CATALOG,
+        schema=PIPELINE_SCHEMA,
+        disposition=Disposition.INLINE,
+        format=Format.JSON_ARRAY,
+        row_limit=row_limit,
+        wait_timeout="30s",
+        on_wait_timeout=ExecuteStatementRequestOnWaitTimeout.CONTINUE,
+    )
+
+    deadline = time.time() + 120
+    while response.status and response.status.state in {StatementState.PENDING, StatementState.RUNNING}:
+        if not response.statement_id or time.time() > deadline:
+            raise TimeoutError("Databricks SQL statement did not finish in time")
+        time.sleep(1)
+        response = client.statement_execution.get_statement(response.statement_id)
+
+    if response.status and response.status.state != StatementState.SUCCEEDED:
+        error = getattr(response.status, "error", None)
+        message = getattr(error, "message", None) or response.status.state.value
+        raise RuntimeError(message)
+
+    columns = [column.name or "" for column in (response.manifest.schema.columns if response.manifest and response.manifest.schema else [])]
+    rows = response.result.data_array if response.result and response.result.data_array else []
+    return [dict(zip(columns, row)) for row in rows]
 
 app = FastAPI(title="Creative Command Center API", version="1.0.0")
 
@@ -760,6 +915,328 @@ ACTIVITY = _load_csv_table("activity", ACTIVITY, _parse_activity_row)
 MARKET_REGIONS = _load_markets_from_csv(MARKET_REGIONS)
 
 
+def _load_databricks_briefs() -> list[dict[str, Any]]:
+    table = _source_table("gold_media_creative_briefs")
+    rows = _execute_sql(
+        f"""
+        SELECT
+          brief_id,
+          brief_name,
+          brand_name,
+          objective AS campaign_objective,
+          audience_description_text AS target_audience_description,
+          initcap(replace(brief_status, '_', ' ')) AS status,
+          date_format(created_ts, 'yyyy-MM-dd') AS created_ts,
+          CAST(0 AS INT) AS concepts_count,
+          CAST(0 AS INT) AS creatives_count,
+          budget_usd AS budget,
+          submitted_by AS owner
+        FROM {table}
+        ORDER BY created_ts DESC
+        LIMIT 100
+        """,
+        row_limit=100,
+    )
+    briefs = [
+        {
+            "brief_id": _as_text(row.get("brief_id")),
+            "brief_name": _as_text(row.get("brief_name"), "Untitled brief"),
+            "brand_name": _as_text(row.get("brand_name"), "Unknown brand"),
+            "campaign_objective": _as_text(row.get("campaign_objective"), "Not specified"),
+            "target_audience_description": _as_text(row.get("target_audience_description"), "Not specified"),
+            "status": _as_text(row.get("status"), "Draft"),
+            "created_ts": _as_text(row.get("created_ts")),
+            "concepts_count": _as_int_value(row.get("concepts_count")),
+            "creatives_count": _as_int_value(row.get("creatives_count")),
+            "budget": _as_float_value(row.get("budget")),
+            "owner": _as_text(row.get("owner"), "Not assigned"),
+        }
+        for row in rows
+    ]
+    _table_source("briefs", table, len(briefs))
+    return briefs
+
+
+def _load_databricks_audiences() -> list[dict[str, Any]]:
+    table = _pipeline_table("gold_buyside_audience_cohort")
+    rows = _execute_sql(
+        f"""
+        SELECT
+          cohort_id,
+          cohort_name,
+          cohort_description,
+          definition_type,
+          personalization_granularity,
+          estimated_reach,
+          is_region_allowed,
+          is_channel_allowed,
+          is_frequency_capped,
+          status,
+          date_format(last_refreshed_ts, 'yyyy-MM-dd') AS last_updated_ts,
+          feature_summary_text
+        FROM {table}
+        ORDER BY estimated_reach DESC
+        LIMIT 100
+        """,
+        row_limit=100,
+    )
+    audiences = [
+        {
+            "cohort_id": _as_text(row.get("cohort_id")),
+            "cohort_name": _as_text(row.get("cohort_name"), "Untitled cohort"),
+            "cohort_description": _as_text(row.get("cohort_description")),
+            "definition_type": _as_text(row.get("definition_type"), "manual"),
+            "personalization_granularity": _as_text(row.get("personalization_granularity"), "Segment"),
+            "estimated_reach": _as_int_value(row.get("estimated_reach")),
+            "is_region_allowed": _as_bool_value(row.get("is_region_allowed")),
+            "is_channel_allowed": _as_bool_value(row.get("is_channel_allowed")),
+            "is_frequency_capped": _as_bool_value(row.get("is_frequency_capped")),
+            "status": _as_text(row.get("status"), "Active"),
+            "last_updated_ts": _as_text(row.get("last_updated_ts")),
+            "feature_summary_text": _as_text(row.get("feature_summary_text")),
+        }
+        for row in rows
+    ]
+    _table_source("audiences", table, len(audiences))
+    return audiences
+
+
+def _load_databricks_creatives() -> list[dict[str, Any]]:
+    table = _pipeline_table("gold_buyside_generated_creatives")
+    rows = _execute_sql(
+        f"""
+        SELECT
+          creative_asset_id,
+          asset_name,
+          asset_type,
+          upper(format) AS format,
+          width_px,
+          height_px,
+          approval_status,
+          target_segment,
+          content_tags,
+          generation_model,
+          date_format(created_ts, 'yyyy-MM-dd') AS created_at
+        FROM {table}
+        ORDER BY created_ts DESC
+        LIMIT 100
+        """,
+        row_limit=100,
+    )
+    creatives = [
+        {
+            "creative_asset_id": _as_text(row.get("creative_asset_id")),
+            "asset_name": _as_text(row.get("asset_name"), "Untitled asset"),
+            "asset_type": _as_text(row.get("asset_type"), "Image"),
+            "format": _as_text(row.get("format"), "N/A"),
+            "width_px": _as_int_value(row.get("width_px")),
+            "height_px": _as_int_value(row.get("height_px")),
+            "approval_status": _as_text(row.get("approval_status"), "Draft"),
+            "target_segment": _as_text(row.get("target_segment"), "N/A"),
+            "content_tags": _split_tags(row.get("content_tags")),
+            "generation_model": _as_text(row.get("generation_model"), "N/A"),
+            "created_at": _as_text(row.get("created_at")),
+        }
+        for row in rows
+    ]
+    _table_source("creatives", table, len(creatives))
+    return creatives
+
+
+def _load_databricks_activations() -> list[dict[str, Any]]:
+    table = _pipeline_table("gold_buyside_campaign_activation")
+    rows = _execute_sql(
+        f"""
+        SELECT
+          activation_id,
+          creative_asset_id,
+          campaign_id,
+          destination_platform,
+          trafficking_status,
+          impressions,
+          clicks,
+          conversions,
+          cost,
+          ab_test_id,
+          date_format(last_sync_ts, 'yyyy-MM-dd HH:mm') AS last_sync_ts
+        FROM {table}
+        ORDER BY last_sync_ts DESC
+        LIMIT 100
+        """,
+        row_limit=100,
+    )
+    activations = [
+        {
+            "activation_id": _as_text(row.get("activation_id")),
+            "creative_asset_id": _as_text(row.get("creative_asset_id")),
+            "campaign_id": _as_text(row.get("campaign_id")),
+            "destination_platform": _as_text(row.get("destination_platform"), "Unknown"),
+            "trafficking_status": _as_text(row.get("trafficking_status"), "Draft"),
+            "impressions": _as_int_value(row.get("impressions")),
+            "clicks": _as_int_value(row.get("clicks")),
+            "conversions": _as_int_value(row.get("conversions")),
+            "cost": _as_float_value(row.get("cost")),
+            "ab_test_id": row.get("ab_test_id"),
+            "last_sync_ts": _as_text(row.get("last_sync_ts")),
+        }
+        for row in rows
+    ]
+    _table_source("activations", table, len(activations))
+    return activations
+
+
+def _dashboard_trend_from_databricks() -> list[dict[str, Any]]:
+    table = _pipeline_table("gold_buyside_campaign_activation")
+    rows = _execute_sql(
+        f"""
+        SELECT
+          to_date(last_sync_ts) AS sort_date,
+          date_format(to_date(last_sync_ts), 'MMM dd') AS date,
+          sum(cost) AS spend,
+          sum(conversions) AS conversions,
+          round(100 * sum(clicks) / nullif(sum(impressions), 0), 2) AS ctr
+        FROM {table}
+        GROUP BY to_date(last_sync_ts)
+        ORDER BY sort_date
+        LIMIT 30
+        """,
+        row_limit=30,
+    )
+    return [
+        {
+            "date": _as_text(row.get("date")),
+            "spend": _as_float_value(row.get("spend")),
+            "conversions": _as_int_value(row.get("conversions")),
+            "ctr": _as_float_value(row.get("ctr")),
+        }
+        for row in rows
+    ]
+
+
+def _totals_for(
+    briefs: list[dict[str, Any]],
+    creatives: list[dict[str, Any]],
+    activations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    impressions = sum(_as_int_value(a.get("impressions")) for a in activations)
+    clicks = sum(_as_int_value(a.get("clicks")) for a in activations)
+    conversions = sum(_as_int_value(a.get("conversions")) for a in activations)
+    spend = sum(_as_float_value(a.get("cost")) for a in activations)
+    ctr = (clicks / impressions * 100) if impressions else 0
+    cpa = (spend / conversions) if conversions else 0
+    return {
+        "impressions": impressions,
+        "clicks": clicks,
+        "conversions": conversions,
+        "spend": spend,
+        "ctr": round(ctr, 2),
+        "cpa": round(cpa, 2),
+        "active_briefs": len([b for b in briefs if _as_text(b.get("status")).lower() in {"active", "activated"}]),
+        "approved_creatives": len([c for c in creatives if c.get("approval_status") == "Approved"]),
+    }
+
+
+def _channel_mix_from(activations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    spend_by_platform: dict[str, float] = {}
+    for activation in activations:
+        platform = _as_text(activation.get("destination_platform"), "Unknown")
+        spend_by_platform[platform] = spend_by_platform.get(platform, 0.0) + _as_float_value(activation.get("cost"))
+
+    total_spend = sum(spend_by_platform.values()) or 1
+    return [
+        {
+            "name": platform,
+            "value": round(spend / total_spend * 100),
+            "spend": round(spend, 2),
+        }
+        for platform, spend in sorted(spend_by_platform.items(), key=lambda item: item[1], reverse=True)[:8]
+    ]
+
+
+def _activity_from(activations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for activation in activations[:6]:
+        platform = _as_text(activation.get("destination_platform"), "Platform")
+        status = _as_text(activation.get("trafficking_status"), "updated")
+        rows.append(
+            {
+                "event": f"{platform} activation {status.lower()}",
+                "detail": f"{activation.get('campaign_id')} / {activation.get('creative_asset_id')} synced from pipeline data",
+                "time": _as_text(activation.get("last_sync_ts"), "recently"),
+                "type": "sync" if status in {"Live", "Submitted"} else "alert",
+            }
+        )
+    return rows or ACTIVITY
+
+
+def _csv_runtime_data() -> dict[str, Any]:
+    return {
+        "briefs": BRIEFS,
+        "audiences": AUDIENCES,
+        "creatives": CREATIVES,
+        "activations": ACTIVATIONS,
+        "markets": MARKET_REGIONS,
+        "dashboard": {
+            "totals": _totals_for(BRIEFS, CREATIVES, ACTIVATIONS),
+            "trend": PERFORMANCE_TREND,
+            "channel_mix": CHANNEL_MIX,
+            "quality_radar": QUALITY_RADAR,
+            "activity": ACTIVITY,
+        },
+    }
+
+
+@lru_cache(maxsize=1)
+def _runtime_data() -> dict[str, Any]:
+    data = _csv_runtime_data()
+    if not USE_PIPELINE_DATA:
+        return data
+
+    loaders: list[tuple[str, Callable[[], list[dict[str, Any]]]]] = [
+        ("briefs", _load_databricks_briefs),
+        ("audiences", _load_databricks_audiences),
+        ("creatives", _load_databricks_creatives),
+        ("activations", _load_databricks_activations),
+    ]
+    for key, loader in loaders:
+        try:
+            data[key] = loader()
+        except Exception as exc:
+            _table_error(key, exc)
+
+    try:
+        trend = _dashboard_trend_from_databricks()
+        DATA_LOAD_SOURCES["performance_trend"] = {
+            "source": "databricks_sql",
+            "path": f"{PIPELINE_CATALOG}.{PIPELINE_SCHEMA}.gold_buyside_campaign_activation",
+            "rows": len(trend),
+            "loaded": True,
+        }
+    except Exception as exc:
+        _table_error("performance_trend", exc)
+        trend = PERFORMANCE_TREND
+
+    if data["activations"] is ACTIVATIONS:
+        channel_mix = CHANNEL_MIX
+    else:
+        channel_mix = _channel_mix_from(data["activations"])
+        DATA_LOAD_SOURCES["channel_mix"] = {
+            "source": "databricks_sql",
+            "path": f"{PIPELINE_CATALOG}.{PIPELINE_SCHEMA}.gold_buyside_campaign_activation",
+            "rows": len(channel_mix),
+            "loaded": bool(channel_mix),
+        }
+
+    data["dashboard"] = {
+        "totals": _totals_for(data["briefs"], data["creatives"], data["activations"]),
+        "trend": trend,
+        "channel_mix": channel_mix or CHANNEL_MIX,
+        "quality_radar": QUALITY_RADAR,
+        "activity": _activity_from(data["activations"]),
+    }
+    return data
+
+
 BACKEND_TABLES = [
     {
         "name": "briefs",
@@ -841,22 +1318,7 @@ class AskRequest(BaseModel):
 
 
 def _totals() -> dict[str, Any]:
-    impressions = sum(a["impressions"] for a in ACTIVATIONS)
-    clicks = sum(a["clicks"] for a in ACTIVATIONS)
-    conversions = sum(a["conversions"] for a in ACTIVATIONS)
-    spend = sum(a["cost"] for a in ACTIVATIONS)
-    ctr = (clicks / impressions * 100) if impressions else 0
-    cpa = (spend / conversions) if conversions else 0
-    return {
-        "impressions": impressions,
-        "clicks": clicks,
-        "conversions": conversions,
-        "spend": spend,
-        "ctr": round(ctr, 2),
-        "cpa": round(cpa, 2),
-        "active_briefs": len([b for b in BRIEFS if b["status"] == "Active"]),
-        "approved_creatives": len([c for c in CREATIVES if c["approval_status"] == "Approved"]),
-    }
+    return _totals_for(BRIEFS, CREATIVES, ACTIVATIONS)
 
 
 @app.get("/api/health")
@@ -866,9 +1328,16 @@ async def health() -> dict[str, str]:
 
 @app.get("/api/backend-tables")
 async def backend_tables() -> dict[str, Any]:
+    _runtime_data()
     return {
+        "data_source": "databricks_sql" if USE_PIPELINE_DATA else "csv_extract",
         "data_dir": _display_path(SAMPLE_DATA_DIR),
+        "catalog": PIPELINE_CATALOG,
+        "schema": PIPELINE_SCHEMA,
+        "source_catalog": SOURCE_CATALOG,
+        "source_schema": SOURCE_SCHEMA,
         "bundle_ready": True,
+        "errors": DATA_BACKEND_ERRORS,
         "tables": [
             {
                 **table,
@@ -898,12 +1367,16 @@ async def model_status() -> dict[str, Any]:
         "audience_lens_uses_model_serving": False,
         "serving_endpoint_configured": bool(endpoint_name),
         "configured_endpoint": endpoint_name,
-        "mode": "csv_sample_backend",
+        "mode": "databricks_sql_pipeline_backend" if USE_PIPELINE_DATA else "csv_sample_backend",
         "checked_path": "/api/audiences",
         "verified": True,
         "evidence": [
             "The Audience lens fetches /api/audiences through the FastAPI backend.",
-            "The FastAPI /api/audiences handler returns bundled CSV sample rows.",
+            (
+                "The FastAPI /api/audiences handler reads Databricks pipeline tables through SQL Warehouse."
+                if USE_PIPELINE_DATA
+                else "The FastAPI /api/audiences handler returns bundled CSV sample rows."
+            ),
             "This branch has no server-side call to a Databricks Model Serving endpoint for Audience lens scoring.",
         ],
     }
@@ -911,38 +1384,32 @@ async def model_status() -> dict[str, Any]:
 
 @app.get("/api/dashboard")
 async def dashboard() -> dict[str, Any]:
-    return {
-        "totals": _totals(),
-        "trend": PERFORMANCE_TREND,
-        "channel_mix": CHANNEL_MIX,
-        "quality_radar": QUALITY_RADAR,
-        "activity": ACTIVITY,
-    }
+    return _runtime_data()["dashboard"]
 
 
 @app.get("/api/briefs")
 async def briefs() -> list[dict[str, Any]]:
-    return BRIEFS
+    return _runtime_data()["briefs"]
 
 
 @app.get("/api/audiences")
 async def audiences() -> list[dict[str, Any]]:
-    return AUDIENCES
+    return _runtime_data()["audiences"]
 
 
 @app.get("/api/creatives")
 async def creatives() -> list[dict[str, Any]]:
-    return CREATIVES
+    return _runtime_data()["creatives"]
 
 
 @app.get("/api/activations")
 async def activations() -> list[dict[str, Any]]:
-    return ACTIVATIONS
+    return _runtime_data()["activations"]
 
 
 @app.get("/api/markets")
 async def markets() -> list[dict[str, Any]]:
-    return MARKET_REGIONS
+    return _runtime_data()["markets"]
 
 
 @app.post("/api/ask")

@@ -77,45 +77,48 @@ type Brief = {
   brief_name: string;
   brand_name: string;
   campaign_objective: string;
-  target_audience_description: string;
-  status: "Draft" | "In Review" | "Approved" | "Active";
-  created_ts: string;
-  concepts_count: number;
-  creatives_count: number;
-  budget: number;
-  owner: string;
+  target_audience_description?: string;
+  status: string;
+  created_ts?: string;
+  concepts_count?: number;
+  creatives_count?: number;
+  budget?: number;
+  owner?: string;
 };
 
 type Audience = {
   cohort_id: string;
   cohort_name: string;
   cohort_description: string;
-  definition_type: "rule_based" | "ml_model" | "lookalike" | "manual";
-  personalization_granularity: "Segment" | "Micro_Cohort" | "One_to_One";
+  definition_type: string;
+  personalization_granularity?: string;
   estimated_reach: number;
   is_region_allowed: boolean;
   is_channel_allowed: boolean;
   is_frequency_capped: boolean;
-  status: "Active" | "Archived";
-  last_updated_ts: string;
-  match_rate: number;
-  avg_ltv: number;
+  status: string;
+  last_updated_ts?: string;
+  last_refreshed_ts?: string;
+  match_rate?: number;
+  avg_ltv?: number;
+  feature_summary_text?: string;
 };
 
 type Creative = {
   creative_asset_id: string;
   asset_name: string;
-  asset_type: "Image" | "Video" | "DCO";
+  asset_type: string;
   format: string;
   width_px: number;
   height_px: number;
-  approval_status: "Draft" | "Pending_Review" | "Approved" | "Rejected";
-  target_segment: string;
-  content_tags: string[];
-  generation_model: string;
-  created_at: string;
-  quality_score: number;
-  predicted_ctr: number;
+  approval_status: string;
+  target_segment?: string;
+  content_tags?: string[] | string;
+  generation_model?: string;
+  created_at?: string;
+  created_ts?: string;
+  quality_score?: number;
+  predicted_ctr?: number;
 };
 
 type Activation = {
@@ -123,7 +126,7 @@ type Activation = {
   creative_asset_id: string;
   campaign_id: string;
   destination_platform: string;
-  trafficking_status: "Draft" | "Submitted" | "Live" | "Paused" | "Ended";
+  trafficking_status: string;
   impressions: number;
   clicks: number;
   conversions: number;
@@ -226,6 +229,13 @@ type JourneyStep = {
   color: string;
 };
 
+type DataContractGap = {
+  surface: string;
+  mockCsv: string;
+  pipeline: string;
+  recommendation: string;
+};
+
 const COLORS = ["#0f9f95", "#256b8f", "#c7793a", "#5b65d8", "#1f9d72", "#d89a23", "#b65aa6"];
 const ASK_SUGGESTIONS = ["average CTR by audience", "activation status", "creative quality", "campaign ROI"];
 const PACING_WINDOWS = [7, 14, 30] as const;
@@ -280,6 +290,38 @@ const ARCH_PLATFORM_SERVICES = [
   ["Serverless Compute", "Pipeline + API runtime"],
   ["SQL Warehouse", "Serving + BI compute"],
   ["Secrets", "Credential store"],
+];
+const DATA_CONTRACT_GAPS: DataContractGap[] = [
+  {
+    surface: "Audiences",
+    mockCsv: "Adds match_rate, avg_ltv, and last_updated_ts for charts.",
+    pipeline: "gold_buyside_audience_cohort emits definition_value, feature_summary_text, last_refreshed_ts, and eligibility flags.",
+    recommendation: "Derive match_rate and value metrics in the API or change the UI to label them as unavailable when reading the pipeline table directly.",
+  },
+  {
+    surface: "Creatives",
+    mockCsv: "Adds quality_score, predicted_ctr, semicolon tags, and created_at.",
+    pipeline: "gold_buyside_generated_creatives emits created_ts, updated_ts, generation_params, target_content_genre, and comma-separated content_tags.",
+    recommendation: "Normalize tags and map created_ts to the UI contract; add a scoring table or model output for quality_score and predicted_ctr.",
+  },
+  {
+    surface: "Activations",
+    mockCsv: "Uses a compact activation record shaped exactly for the table.",
+    pipeline: "gold_buyside_campaign_activation also includes line_item_id, brief_id, destination_placement_id, activation_ts, metrics update time, and ab_test_variant_id.",
+    recommendation: "The UI can keep its current columns, but the API should pass through line item and variant fields when deeper drilldowns are added.",
+  },
+  {
+    surface: "Overview and Markets",
+    mockCsv: "Uses dashboard, activity, channel mix, quality radar, market, metro, and trend extracts.",
+    pipeline: "The current pipeline files do not create gold_market_* or dashboard aggregate tables with these exact names.",
+    recommendation: "Create aggregate views from activation, creative, and audience tables or continue treating these CSVs as demo-only presentation extracts.",
+  },
+  {
+    surface: "Briefs",
+    mockCsv: "Includes owner, budget, concepts_count, and creatives_count.",
+    pipeline: "Briefs are sourced from media_demo.gold_media_creative_briefs, so optional planning fields may not match the CSV surface.",
+    recommendation: "Confirm the source brief schema and compute counts from concepts and generated creatives before replacing the CSV extract.",
+  },
 ];
 const JOURNEY_STEPS: JourneyStep[] = [
   {
@@ -544,6 +586,40 @@ function formatMoney(value: number) {
 
 function pct(numerator: number, denominator: number) {
   return denominator ? ((numerator / denominator) * 100).toFixed(2) : "0.00";
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function optionalNumber(value: unknown) {
+  return isFiniteNumber(value) ? value : null;
+}
+
+function optionalMoney(value: unknown) {
+  const amount = optionalNumber(value);
+  return amount === null ? "N/A" : formatMoney(amount);
+}
+
+function audienceMatchPercent(audience: Audience) {
+  return isFiniteNumber(audience.match_rate) ? Math.round(audience.match_rate * 100) : null;
+}
+
+function creativeQualityScore(creative: Creative) {
+  return optionalNumber(creative.quality_score);
+}
+
+function creativePredictedCtr(creative: Creative) {
+  return optionalNumber(creative.predicted_ctr);
+}
+
+function creativeTags(creative: Creative) {
+  if (Array.isArray(creative.content_tags)) return creative.content_tags;
+  if (!creative.content_tags) return [];
+  return creative.content_tags
+    .split(/[;,]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
 }
 
 function audienceChartLabel(name: string) {
@@ -1267,7 +1343,7 @@ function Briefs({ briefs }: { briefs: Brief[] }) {
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
   const filtered = briefs.filter((brief) => {
-    const text = `${brief.brief_name} ${brief.brand_name} ${brief.owner}`.toLowerCase();
+    const text = `${brief.brief_name} ${brief.brand_name} ${brief.owner ?? ""}`.toLowerCase();
     return (status === "all" || brief.status === status) && (!search || text.includes(search.toLowerCase()));
   });
 
@@ -1304,10 +1380,10 @@ function Briefs({ briefs }: { briefs: Brief[] }) {
                     <p className="font-mono text-[11px] text-[var(--faint)]">{brief.brief_id}</p>
                   </td>
                   <td className="max-w-[280px] px-4 py-4 text-[13px] text-[var(--muted)]">{brief.campaign_objective}</td>
-                  <td className="max-w-[220px] px-4 py-4 text-[12px] text-[var(--muted)]">{brief.target_audience_description}</td>
-                  <td className="px-4 py-4 text-right font-mono text-[13px]">{formatMoney(brief.budget)}</td>
-                  <td className="px-4 py-4 text-right font-mono text-[13px]">{brief.creatives_count}</td>
-                  <td className="px-4 py-4 text-[13px]">{brief.owner}</td>
+                  <td className="max-w-[220px] px-4 py-4 text-[12px] text-[var(--muted)]">{brief.target_audience_description ?? "N/A"}</td>
+                  <td className="px-4 py-4 text-right font-mono text-[13px]">{optionalMoney(brief.budget)}</td>
+                  <td className="px-4 py-4 text-right font-mono text-[13px]">{brief.creatives_count ?? "N/A"}</td>
+                  <td className="px-4 py-4 text-[13px]">{brief.owner ?? "N/A"}</td>
                   <td className="px-4 py-4"><StatusPill value={brief.status} /></td>
                 </tr>
               ))}
@@ -1328,8 +1404,7 @@ function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelSta
     name: audience.cohort_name,
     label: audienceChartLabel(audience.cohort_name),
     reach: audience.estimated_reach,
-    match: Math.round(audience.match_rate * 100),
-    ltv: audience.avg_ltv,
+    match: audienceMatchPercent(audience),
   }));
 
   return (
@@ -1377,7 +1452,7 @@ function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelSta
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.name ?? ""}
                   formatter={(value, name) => {
                     if (name === "reach") return [formatNumber(Number(value)), "Reach"];
-                    if (name === "match") return [`${value}%`, "Match rate"];
+                    if (name === "match") return [value === null ? "N/A" : `${value}%`, "Match rate"];
                     return [value, name];
                   }}
                 />
@@ -1389,24 +1464,27 @@ function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelSta
           </div>
         </Panel>
         <div className="grid gap-3">
-          {filtered.map((audience) => (
-            <Panel key={audience.cohort_id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[14px] font-semibold">{audience.cohort_name}</p>
-                  <p className="mt-1 text-[12px] text-[var(--muted)]">{audience.cohort_description}</p>
+          {filtered.map((audience) => {
+            const match = audienceMatchPercent(audience);
+            return (
+              <Panel key={audience.cohort_id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[14px] font-semibold">{audience.cohort_name}</p>
+                    <p className="mt-1 text-[12px] text-[var(--muted)]">{audience.cohort_description}</p>
+                  </div>
+                  <span className="rounded-md bg-[var(--panel-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">
+                    {audience.definition_type.replace("_", " ")}
+                  </span>
                 </div>
-                <span className="rounded-md bg-[var(--panel-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">
-                  {audience.definition_type.replace("_", " ")}
-                </span>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-3">
-                <MetricMini label="Reach" value={formatCompact(audience.estimated_reach)} />
-                <MetricMini label="Match" value={`${Math.round(audience.match_rate * 100)}%`} />
-                <MetricMini label="LTV" value={formatMoney(audience.avg_ltv)} />
-              </div>
-            </Panel>
-          ))}
+                <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-3">
+                  <MetricMini label="Reach" value={formatCompact(audience.estimated_reach)} />
+                  <MetricMini label="Match" value={match === null ? "N/A" : `${match}%`} />
+                  <MetricMini label="LTV" value={optionalMoney(audience.avg_ltv)} />
+                </div>
+              </Panel>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -1418,8 +1496,8 @@ function Creatives({ creatives }: { creatives: Creative[] }) {
   const filtered = creatives.filter((creative) => status === "all" || creative.approval_status === status);
   const qualityData = filtered.map((creative) => ({
     name: creative.asset_name.split(" ").slice(0, 2).join(" "),
-    quality: creative.quality_score,
-    ctr: creative.predicted_ctr,
+    quality: creativeQualityScore(creative),
+    ctr: creativePredictedCtr(creative),
   }));
 
   return (
@@ -1447,38 +1525,43 @@ function Creatives({ creatives }: { creatives: Creative[] }) {
         </div>
       </Panel>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {filtered.map((creative, index) => (
-          <motion.article
-            key={creative.creative_asset_id}
-            className="overflow-hidden rounded-lg border border-[var(--line)] bg-white"
-            whileHover={{ y: -3 }}
-            transition={{ duration: 0.16 }}
-          >
-            <div className={`relative flex h-40 items-end p-4 text-white ${["creative-sports", "creative-story", "creative-family", "creative-upgrade"][index % 4]}`}>
-              <div className="absolute right-3 top-3 rounded-md bg-black/28 px-2 py-1 font-mono text-[11px]">
-                {creative.width_px}x{creative.height_px}
+        {filtered.map((creative, index) => {
+          const predictedCtr = creativePredictedCtr(creative);
+          return (
+            <motion.article
+              key={creative.creative_asset_id}
+              className="overflow-hidden rounded-lg border border-[var(--line)] bg-white"
+              whileHover={{ y: -3 }}
+              transition={{ duration: 0.16 }}
+            >
+              <div className={`relative flex h-40 items-end p-4 text-white ${["creative-sports", "creative-story", "creative-family", "creative-upgrade"][index % 4]}`}>
+                <div className="absolute right-3 top-3 rounded-md bg-black/28 px-2 py-1 font-mono text-[11px]">
+                  {creative.width_px}x{creative.height_px}
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase opacity-80">{creative.asset_type}</p>
+                  <p className="mt-1 text-[18px] font-bold leading-tight">{creative.asset_name}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase opacity-80">{creative.asset_type}</p>
-                <p className="mt-1 text-[18px] font-bold leading-tight">{creative.asset_name}</p>
-              </div>
-            </div>
-            <div className="p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <StatusPill value={creative.approval_status} />
-                <span className="font-mono text-[12px] text-[var(--muted)]">{creative.predicted_ctr.toFixed(2)}% CTR</span>
-              </div>
-              <p className="text-[12px] text-[var(--muted)]">{creative.target_segment}</p>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {creative.content_tags.map((tag) => (
-                  <span key={tag} className="rounded-md bg-[var(--panel-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">
-                    {tag}
+              <div className="p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <StatusPill value={creative.approval_status} />
+                  <span className="font-mono text-[12px] text-[var(--muted)]">
+                    {predictedCtr === null ? "N/A CTR" : `${predictedCtr.toFixed(2)}% CTR`}
                   </span>
-                ))}
+                </div>
+                <p className="text-[12px] text-[var(--muted)]">{creative.target_segment ?? "N/A"}</p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {creativeTags(creative).map((tag) => (
+                    <span key={tag} className="rounded-md bg-[var(--panel-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-          </motion.article>
-        ))}
+            </motion.article>
+          );
+        })}
       </div>
     </div>
   );
@@ -2002,6 +2085,32 @@ function TalkTrack({ data }: { data: AgencyData }) {
           </Panel>
         </div>
       </div>
+
+      <Panel>
+        <SectionHeader title="Mock CSV vs pipeline data contract" eyebrow="Production adjustments" />
+        <div className="overflow-x-auto thin-scrollbar">
+          <table className="w-full min-w-[1080px] text-left">
+            <thead className="bg-[var(--panel-soft)] text-[11px] uppercase text-[var(--muted)]">
+              <tr>
+                <th className="px-4 py-3">Surface</th>
+                <th className="px-4 py-3">CSV demo data</th>
+                <th className="px-4 py-3">Pipeline data</th>
+                <th className="px-4 py-3">Suggested adjustment</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--line)]">
+              {DATA_CONTRACT_GAPS.map((gap) => (
+                <tr key={gap.surface} className="align-top hover:bg-[var(--panel-soft)]/70">
+                  <td className="px-4 py-4 text-[13px] font-semibold">{gap.surface}</td>
+                  <td className="px-4 py-4 text-[12px] leading-5 text-[var(--muted)]">{gap.mockCsv}</td>
+                  <td className="px-4 py-4 text-[12px] leading-5 text-[var(--muted)]">{gap.pipeline}</td>
+                  <td className="px-4 py-4 text-[12px] leading-5 text-[var(--ink)]">{gap.recommendation}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   );
 }

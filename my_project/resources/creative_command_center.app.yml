@@ -2,5 +2,5 @@ resources:
   apps:
     creative_command_center:
       name: ${var.app_name}
-      description: Self-contained Creative Command Center demo with a CSV-backed FastAPI backend and React frontend.
+      description: Creative Command Center demo with a Databricks SQL pipeline backend, CSV fallback, and React frontend.
       source_code_path: ..

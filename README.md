@@ -2,7 +2,7 @@
 
 Participant-facing contract for the CME Build Day creative-generation workstream. The goal on Build Day is for every team to ship a working, personalized creative experience on top of the `cme_outcomes_uswest.media_demo` Customer 360.
 
-This repo contains the shared data contract, track briefs, and NBA gold table DDL/seed scripts (`sql/nba/`). No reference apps or pipelines live here; teams bring their own implementations (LakeFoundry or hand-built).
+This repo contains the shared data contract, track briefs, NBA gold table DDL/seed scripts (`sql/nba/`), the buyside Lakeflow pipeline bundle (`databricks.yml`, `resources/`, `pipelines/`), and the Creative Command Center app (`my_project/`).
 
 ## What we're building
 
@@ -47,7 +47,14 @@ databricks bundle run creative_command_center -t dev
 ### What's Included
 
 - React + FastAPI application deployed as a Databricks App
+- Databricks pipeline files under `pipelines/` and `resources/` that generate the buyside gold backend tables
 - CSV-backed sample data (no external dependencies required)
 - Campaign overview, audience targeting, creative scoring, market analysis
 - Architecture diagrams for Business, Platform, Data & ML, and Agent views
 - Ask AI natural language interface
+
+### Backend Loading Path
+
+The root bundle runs the Lakeflow pipeline resources that create the `cme_outcomes_uswest.lakefoundry.gold_buyside_*` tables from upstream `cme_outcomes_uswest.media_demo` gold tables. The app backend in `my_project/app/main.py` reads those generated gold tables through a SQL warehouse when `APP_DATA_SOURCE=databricks`, and falls back to the bundled CSV extracts if a table or grant is unavailable.
+
+The restored branch artifacts include concrete gold-layer pipeline code. Bronze and silver inputs are upstream to this repo and are represented by the shared data contract and existing `media_demo` source tables, not by separate checked-in bronze/silver pipeline files in this branch.
