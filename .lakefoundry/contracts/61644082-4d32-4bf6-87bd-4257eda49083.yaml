@@ -1,0 +1,645 @@
+id: 61644082-4d32-4bf6-87bd-4257eda49083
+title: Creative Generation Workflow Enhancements
+work_type: FEATURE_CHANGE
+version: 0.1.0
+outcome: The goal is to enhance the creative generation workflow within the existing
+  Databricks App. The enhanced primary workflow should cover Brief Intake, Audience
+  Segments, Creative Search and Retrieval, Creative Generation, Creative Modification
+  and Adaptation, Lineage, Governance, and Reuse, Policy, Rights, and Safety Checks,
+  Synthetic Audience Evaluation, Selection and Activation, and Continuous Improvement.
+  The deployed Databricks App should demonstrate this revised workflow, with generated
+  image assets stored as actual files in Unity Catalog volumes. Every generated/adapted
+  asset must have lineage, policy checks, and synthetic evaluation records. The app
+  should read Databricks tables by default in deployed mode, with CSV fallback for
+  local smoke tests. Bundle deployment and run commands must be documented and repeatable.
+artifact_plan: "This enhancement will leverage several Databricks skills including\
+  \ `databricks-app-python`, `databricks-bundles`, `databricks-spark-declarative-pipelines`,\
+  \ `databricks-synthetic-data-gen`, `databricks-unity-catalog`, `databricks-vector-search`,\
+  \ `databricks-model-serving`, `databricks-ai-functions`, and `databricks-jobs`.\
+  \ \n\n**UX Changes:**\n- Navigation will be updated from `Overview -> Briefs ->\
+  \ Audiences -> Creatives -> Markets -> Activations -> Ask AI` to `Overview -> Briefs\
+  \ -> Audiences -> Creative Studio -> Evaluation -> Activations -> Ask AI`.\n- `Creative\
+  \ Studio` will replace the current Creatives view and include search, generation,\
+  \ variants, and adaptation.\n- `Evaluation` will be a new view for policy checks,\
+  \ rights checks, synthetic scoring, and ranking.\n- `Markets` will move to a secondary\
+  \ insights dashboard.\n- `Ask AI` will remain available as a side panel or final\
+  \ tab, backed by governed tables.\n\n**Data Architecture:**\nAll tables will be\
+  \ deployed to `${var.catalog}.${var.schema}`. \n\n**Unity Catalog Volumes:**\n-\
+  \ A managed UC volume `creative_assets` will be created at `/Volumes/${var.catalog}/${var.schema}/creative_assets/`.\n\
+  - Recommended folders: `base/`, `generated/`, `adapted/`, `thumbnails/`, `eval_artifacts/`,\
+  \ `exports/`.\n\n**Delta Tables:**\nNew Delta tables will be created: `gold_buyside_audience_trait_profile`,\
+  \ `gold_buyside_base_creative_asset`, `gold_buyside_asset_rights_profile`, `gold_buyside_asset_search_corpus`,\
+  \ `gold_buyside_creative_generation_request`, `gold_buyside_creative_variant`, `gold_buyside_creative_transformation`,\
+  \ `gold_buyside_creative_lineage_edge`, `gold_buyside_creative_policy_check`, `gold_buyside_synthetic_audience_panel`,\
+  \ `gold_buyside_synthetic_audience_eval`, `gold_buyside_activation_export`, `gold_buyside_prediction_feedback`.\n\
+  \n**Vector Search and Retrieval:**\n- A Databricks Vector Search endpoint `creative-asset-search-${bundle.target}`\
+  \ will be created.\n- A Delta Sync index `${var.catalog}.${var.schema}.creative_asset_search_index`\
+  \ will be created over `gold_buyside_asset_search_corpus`.\n\n**AI and Model Serving:**\n\
+  - Environment variables will be used for `CREATIVE_GENERATION_MODE`, `CREATIVE_GENERATION_ENDPOINT`,\
+  \ `CREATIVE_EDITING_ENDPOINT`, `SYNTHETIC_AUDIENCE_JUDGE_ENDPOINT`, `VISION_METADATA_ENDPOINT`,\
+  \ `EMBEDDING_ENDPOINT`.\n- Databricks Foundation Model APIs or Model Serving endpoints\
+  \ will be used for captioning, policy/brand checks, synthetic audience judging,\
+  \ and prompt refinement.\n- Databricks AI Functions will be used for `ai_extract`,\
+  \ `ai_classify`, `ai_similarity`, and `ai_query`.\n\n**API Enhancements:**\nNew\
+  \ FastAPI endpoints will be added under `my_project/app/main.py` for audience traits,\
+  \ creative asset search, generation requests, variants, lineage, policy checks,\
+  \ synthetic evaluations, activation exports, and feedback.\n\n**Databricks App Configuration:**\n\
+  `my_project/app.yaml` will be updated to use Databricks App resources for `DATABRICKS_WAREHOUSE_ID`,\
+  \ `CREATIVE_ASSET_VOLUME`, `CREATIVE_VECTOR_INDEX`, `CREATIVE_GENERATION_ENDPOINT`,\
+  \ `SYNTHETIC_AUDIENCE_JUDGE_ENDPOINT`.\n\n**Bundle and Deployment Plan:**\n- Root\
+  \ Data Bundle will include new resources: `resources/creative_assets_volume.yml`,\
+  \ `resources/creative_workflow_pipeline.yml`, `resources/creative_generation_jobs.yml`.\n\
+  - New pipeline/source files: `pipelines/creative_asset_library.py`, `pipelines/creative_generation_workflow.py`,\
+  \ `pipelines/creative_policy_checks.py`, `pipelines/synthetic_audience_evaluation.py`,\
+  \ `scripts/generate_synthetic_creative_images.py`, `scripts/setup_vector_search_index.py`.\n\
+  - App Bundle will update `my_project/app.yaml` and `my_project/app/main.py`.\n\n\
+  **Implementation Phases:**\n- **Phase 1 - Demo-Ready Image Workflow:** Move Markets,\
+  \ add Creative Studio and Evaluation views. Create UC volume, synthetic image generation\
+  \ job, all new Delta tables, Vector Search endpoint/index setup script. Add API\
+  \ endpoints. Render synthetic thumbnails and variants. Deploy via bundles.\n- **Phase\
+  \ 2 - Model-Backed Creative Generation and Editing:** Add `CREATIVE_GENERATION_MODE=model_endpoint`.\
+  \ Implement serving endpoint or external service adapter. Add inpainting/outpainting/crop-safe-area\
+  \ controls. Add reviewer workflow.\n- **Phase 3 - Video Support:** Extend workflow\
+  \ to video. Support video metadata, transformations, policy checks, and synthetic\
+  \ evaluation.\n- **Phase 4 - Continuous Improvement and Genie:** Create feedback\
+  \ ingestion. Compare synthetic scores to actual performance. Generate creative pattern\
+  \ summaries. Create or update Genie Space for Ask AI.\n"
+decisions:
+- A creative generation step will be added between the current Audience lens and Creative
+  scoring surfaces.
+- Image workflows will be prioritized first; video will be a later phase but share
+  the same architecture.
+- 'Two creative creation routes will be supported: Search/retrieve governed existing
+  assets from a vector store and Generate new assets from audience traits, brief context,
+  and text instructions.'
+- The user will review several variants (3 to 5) before adapting or activating one.
+- Creatives will be adapted for placement formats (homepage hero, app tile, newsletter
+  banner, social square, story).
+- Lineage will be tracked from brief, audience, base asset, prompt, model, and transformations
+  to each final creative.
+- Auditability will be prioritized over broad reuse, but successful assets will be
+  discoverable.
+- Policy, rights, brand, regional, and safety checks will occur before activation
+  and appear as scores or blocks.
+- Market expansion will move out of the primary workflow and become a supporting dashboard.
+- Ask AI / Genie will close the decision loop by answering questions over briefs,
+  audiences, variants, scores, policy results, activations, and feedback.
+assumptions:
+- The current project has a Databricks App with React frontend and FastAPI backend
+  in `my_project/`.
+- CSV fallback data and Databricks SQL table reads are controlled by `APP_DATA_SOURCE`.
+- Current app views include Overview, Briefs, Audiences, Creatives, Markets, Activations,
+  Ask AI.
+- Pipeline tables exist for audience cohorts, generated creative metadata, campaign
+  activation, identity graph, and A/B tests.
+- A `gold_buyside_generated_creatives` table exists with metadata fields.
+- Databricks tokens, warehouse IDs, model endpoint credentials, or external API keys
+  will not be hardcoded.
+- Databricks App resources and `valueFrom` will be used for various resource references.
+- Unity Catalog tables and volumes will be used for all generated and modified creative
+  assets.
+- Only synthetic audience personas will be stored; no real PII in evaluation tables.
+- Policy version, model version, prompt version, and evidence fields will be included
+  for auditability.
+- Rights checks must be hard gates, and assets with failed/blocked checks will not
+  be eligible for activation export.
+open_questions:
+- Confirm the Unity Catalog and schema for synthetic image data generation. The repo
+  defaults to `cme_outcomes_uswest.lakefoundry`, but generation should not run until
+  the target is explicitly approved.
+- 'Which creative generation/editing service should be treated as the production integration:
+  custom Databricks Model Serving endpoint, Adobe Firefly, Runway, another provider,
+  or synthetic-only for the demo?'
+- Should the first demo support only images, or should video metadata appear as disabled/coming-soon
+  UI controls?
+- 'Which downstream system should activation simulate first: AEM, Adobe Target, CMS,
+  DAM, or onsite personalization?'
+- Should the Ask AI path be implemented through Genie Space first, or remain a lightweight
+  API response until the data model stabilizes?
+- Are brand guideline rules available as structured data, documents, or only prompt
+  text?
+phase_roadmap:
+- name: Data Foundation for Creative Assets
+  size: large
+  context:
+  - text: 'All tables will be deployed to `${var.catalog}.${var.schema}`. A managed
+      UC volume `creative_assets` will be created at `/Volumes/${var.catalog}/${var.schema}/creative_assets/`.
+      Recommended folders: `base/`, `generated/`, `adapted/`, `thumbnails/`, `eval_artifacts/`,
+      `exports/`. New Delta tables will be created: `gold_buyside_audience_trait_profile`,
+      `gold_buyside_base_creative_asset`, `gold_buyside_asset_rights_profile`, `gold_buyside_asset_search_corpus`,
+      `gold_buyside_creative_generation_request`, `gold_buyside_creative_variant`,
+      `gold_buyside_creative_transformation`, `gold_buyside_creative_lineage_edge`,
+      `gold_buyside_creative_policy_check`, `gold_buyside_synthetic_audience_panel`,
+      `gold_buyside_synthetic_audience_eval`, `gold_buyside_activation_export`, `gold_buyside_prediction_feedback`.
+      A Databricks Vector Search endpoint `creative-asset-search-${bundle.target}`
+      will be created. A Delta Sync index `${var.catalog}.${var.schema}.creative_asset_search_index`
+      will be created over `gold_buyside_asset_search_corpus`. Root Data Bundle will
+      include new resources: `resources/creative_assets_volume.yml`, `resources/creative_workflow_pipeline.yml`,
+      `resources/creative_generation_jobs.yml`. New pipeline/source files: `pipelines/creative_asset_library.py`,
+      `pipelines/creative_generation_workflow.py`, `scripts/generate_synthetic_creative_images.py`,
+      `scripts/setup_vector_search_index.py`.'
+    source: artifactPlan
+  - text: Unity Catalog tables and volumes will be used for all generated and modified
+      creative assets. Only synthetic audience personas will be stored; no real PII
+      in evaluation tables.
+    source: assumptions
+  - text: 'A creative generation step will be added. Image workflows will be prioritized
+      first. Two creative creation routes will be supported: Search/retrieve governed
+      existing assets from a vector store and Generate new assets from audience traits,
+      brief context, and text instructions. Lineage will be tracked from brief, audience,
+      base asset, prompt, model, and transformations to each final creative.'
+    source: decisions
+  - text: Confirm the Unity Catalog and schema for synthetic image data generation.
+      The repo defaults to `cme_outcomes_uswest.lakefoundry`, but generation should
+      not run until the target is explicitly approved.
+    source: openQuestions
+  phase_id: phase-1
+  objective: Establish the core data architecture and infrastructure for creative
+    assets, including Unity Catalog volumes, Delta tables, and the vector search index,
+    populated with synthetic data.
+  dependencies: []
+  phase_number: 1
+  delivery_area: data_engineering
+  excluded_scope:
+  - User Interface (UI) or Application Programming Interface (API) development for
+    the Databricks App.
+  - Integration with actual ML models for creative generation or editing (only synthetic
+    generation is included).
+  - Support for video assets.
+  - Feedback mechanisms or continuous improvement loops.
+  - Ask AI functionality.
+  included_scope:
+  - Creation of Unity Catalog managed volume `creative_assets` at `/Volumes/${var.catalog}/${var.schema}/creative_assets/`
+    with recommended folder structure.
+  - 'Creation of all specified new Delta tables: `gold_buyside_audience_trait_profile`,
+    `gold_buyside_base_creative_asset`, `gold_buyside_asset_rights_profile`, `gold_buyside_asset_search_corpus`,
+    `gold_buyside_creative_generation_request`, `gold_buyside_creative_variant`, `gold_buyside_creative_transformation`,
+    `gold_buyside_creative_lineage_edge`, `gold_buyside_creative_policy_check`, `gold_buyside_synthetic_audience_panel`,
+    `gold_buyside_synthetic_audience_eval`, `gold_buyside_activation_export`, `gold_buyside_prediction_feedback`.'
+  - Development and deployment of `pipelines/creative_asset_library.py` for managing
+    base creative assets.
+  - Development and deployment of `pipelines/creative_generation_workflow.py` for
+    synthetic image generation.
+  - Development and deployment of `scripts/generate_synthetic_creative_images.py`
+    to populate the `creative_assets` volume with synthetic image data.
+  - Creation of Databricks Vector Search endpoint `creative-asset-search-${bundle.target}`.
+  - Development and deployment of `scripts/setup_vector_search_index.py` to create
+    and populate the Delta Sync index `${var.catalog}.${var.schema}.creative_asset_search_index`
+    over `gold_buyside_asset_search_corpus` with synthetic data.
+  - Integration of `resources/creative_assets_volume.yml`, `resources/creative_workflow_pipeline.yml`,
+    `resources/creative_generation_jobs.yml` into the Root Data Bundle.
+  split_rationale: This phase establishes the foundational data infrastructure (UC
+    volume, Delta tables, Vector Search) and initial synthetic data pipelines, which
+    are prerequisites for any application or ML functionality. It represents a distinct
+    data engineering deliverable, enabling subsequent phases to build upon a stable
+    data layer.
+  validation_plan:
+  - Verify existence and permissions of UC volume `creative_assets` via Databricks
+    UI and SQL commands.
+  - Run `DESCRIBE TABLE` for all new Delta tables to confirm schema and location.
+  - Execute the synthetic image generation job and verify data presence in UC volume
+    and Delta tables (`SELECT COUNT(*)`, `SELECT * LIMIT 10`).
+  - Test the Vector Search endpoint and index by performing sample search queries
+    against the synthetic data.
+  - Perform a full bundle deployment of the Root Data Bundle to a staging environment
+    and confirm all resources are created as expected.
+  acceptance_criteria:
+  - description: The Unity Catalog volume `creative_assets` exists at the specified
+      path and contains the recommended subfolders.
+    criterion_id: uc-volume-exists
+  - description: All 12 new Delta tables exist in `${var.catalog}.${var.schema}` and
+      their schemas match the defined requirements, including auditability fields.
+    criterion_id: delta-tables-exist-and-schema-match
+  - description: The synthetic image generation job runs successfully and populates
+      the `creative_assets` volume and related Delta tables (`gold_buyside_base_creative_asset`,
+      `gold_buyside_creative_variant`, etc.) with synthetic data.
+    criterion_id: synthetic-data-populated
+  - description: The Databricks Vector Search endpoint `creative-asset-search-${bundle.target}`
+      is created and operational.
+    criterion_id: vector-search-endpoint-operational
+  - description: The Delta Sync index `${var.catalog}.${var.schema}.creative_asset_search_index`
+      is successfully created over `gold_buyside_asset_search_corpus` and contains
+      embeddings for synthetic creative assets, allowing successful search queries.
+    criterion_id: vector-search-index-populated
+  - description: The Root Data Bundle deploys all new data resources (volume, tables,
+      jobs, vector search setup) successfully to the target environment.
+    criterion_id: bundle-deploys-data-resources
+  expected_deliverables:
+  - name: Unity Catalog Managed Volume 'creative_assets'
+    description: A managed UC volume created at `/Volumes/${var.catalog}/${var.schema}/creative_assets/`
+      with base, generated, adapted, thumbnails, eval_artifacts, and exports folders.
+    deliverable_id: uc-creative-assets-volume
+  - name: Core Creative Asset Delta Tables
+    description: All 12 new Delta tables for creative assets, generation, evaluation,
+      and lineage, deployed to `${var.catalog}.${var.schema}`.
+    deliverable_id: delta-tables-creative-assets
+  - name: Synthetic Image Generation Pipeline/Job
+    description: Databricks job/pipeline (`pipelines/creative_generation_workflow.py`,
+      `scripts/generate_synthetic_creative_images.py`) successfully generating and
+      storing synthetic images and their metadata into the UC volume and Delta tables.
+    deliverable_id: synthetic-image-generation-job
+  - name: Creative Asset Vector Search Index
+    description: Databricks Vector Search endpoint `creative-asset-search-${bundle.target}`
+      and Delta Sync index `${var.catalog}.${var.schema}.creative_asset_search_index`
+      created and populated with synthetic creative asset embeddings.
+    deliverable_id: vector-search-index-setup
+  - name: Updated Root Data Bundle
+    description: Root Data Bundle updated with `resources/creative_assets_volume.yml`,
+      `resources/creative_workflow_pipeline.yml`, `resources/creative_generation_jobs.yml`.
+    deliverable_id: data-bundle-resources
+- name: MVP Creative Studio App with Synthetic Generation
+  size: large
+  context:
+  - text: 'UX Changes: Navigation will be updated from `Overview -> Briefs -> Audiences
+      -> Creatives -> Markets -> Activations -> Ask AI` to `Overview -> Briefs ->
+      Audiences -> Creative Studio -> Evaluation -> Activations -> Ask AI`. `Creative
+      Studio` will replace the current Creatives view and include search, generation,
+      variants, and adaptation. `Evaluation` will be a new view for policy checks,
+      rights checks, synthetic scoring, and ranking. `Markets` will move to a secondary
+      insights dashboard. `Ask AI` will remain available as a side panel or final
+      tab, backed by governed tables. API Enhancements: New FastAPI endpoints will
+      be added under `my_project/app/main.py` for audience traits, creative asset
+      search, generation requests, variants, lineage, policy checks, synthetic evaluations,
+      activation exports, and feedback. Databricks App Configuration: `my_project/app.yaml`
+      will be updated to use Databricks App resources for `DATABRICKS_WAREHOUSE_ID`,
+      `CREATIVE_ASSET_VOLUME`, `CREATIVE_VECTOR_INDEX`. App Bundle will update `my_project/app.yaml`
+      and `my_project/app/main.py`.'
+    source: artifactPlan
+  - text: The current project has a Databricks App with React frontend and FastAPI
+      backend in `my_project/`. CSV fallback data and Databricks SQL table reads are
+      controlled by `APP_DATA_SOURCE`. Current app views include Overview, Briefs,
+      Audiences, Creatives, Markets, Activations, Ask AI. Databricks App resources
+      and `valueFrom` will be used for various resource references.
+    source: assumptions
+  - text: The user will review several variants (3 to 5) before adapting or activating
+      one. Creatives will be adapted for placement formats. Lineage will be tracked.
+      Policy, rights, brand, regional, and safety checks will occur before activation
+      and appear as scores or blocks. Market expansion will move out of the primary
+      workflow.
+    source: decisions
+  - text: Should the first demo support only images, or should video metadata appear
+      as disabled/coming-soon UI controls?
+    source: openQuestions
+  phase_id: phase-2
+  objective: Deliver a functional Databricks App with the updated navigation, 'Creative
+    Studio' and 'Evaluation' views, backed by the data foundation from Phase 1, demonstrating
+    synthetic image generation and variant rendering through new FastAPI endpoints.
+  dependencies:
+  - phase-1
+  phase_number: 2
+  delivery_area: databricks_app
+  excluded_scope:
+  - Integration with actual ML models for creative generation or editing (only synthetic
+    generation is included).
+  - Advanced inpainting/outpainting/crop-safe-area controls.
+  - Full reviewer workflow.
+  - Support for video assets.
+  - Comprehensive feedback ingestion and analysis.
+  - Ask AI functionality and Genie Space integration.
+  included_scope:
+  - 'Implementation of UX changes: updated navigation from `Overview -> Briefs ->
+    Audiences -> Creatives -> Markets -> Activations -> Ask AI` to `Overview -> Briefs
+    -> Audiences -> Creative Studio -> Evaluation -> Activations -> Ask AI`.'
+  - Development of the `Creative Studio` view, replacing the current Creatives view,
+    including basic search, generation (synthetic), variants, and adaptation functionalities.
+  - Development of the `Evaluation` view for policy checks, rights checks, synthetic
+    scoring, and ranking (using synthetic data/logic).
+  - Implementation of new FastAPI endpoints under `my_project/app/main.py` for audience
+    traits, creative asset search, generation requests (synthetic), variants, lineage,
+    policy checks (synthetic), synthetic evaluations, activation exports, and feedback
+    (basic structure).
+  - Integration of the app backend with the synthetic image generation and vector
+    search index established in Phase 1.
+  - Rendering of synthetic thumbnails and variants within the `Creative Studio` view.
+  - Updating `my_project/app.yaml` to use Databricks App resources for `DATABRICKS_WAREHOUSE_ID`,
+    `CREATIVE_ASSET_VOLUME`, `CREATIVE_VECTOR_INDEX`.
+  - Deployment of the updated Databricks App via bundles.
+  split_rationale: This phase focuses on delivering the user-facing Databricks App
+    with its UI and API, integrating with the data foundation established in Phase
+    1. It represents a distinct Databricks App deliverable, providing an MVP experience
+    with synthetic creative generation before integrating advanced ML models.
+  validation_plan:
+  - Manually navigate through the updated Databricks App UI to verify navigation,
+    'Creative Studio', and 'Evaluation' views.
+  - Use Postman/curl or integrated UI controls to test each new FastAPI endpoint for
+    correct responses and data interaction.
+  - Perform an end-to-end test from the 'Creative Studio' UI to trigger synthetic
+    generation and verify the display of generated assets and their metadata.
+  - Verify that `APP_DATA_SOURCE` controls CSV fallback for local smoke tests.
+  - Execute the App Bundle deployment and verify the application's availability and
+    functionality in the target environment.
+  acceptance_criteria:
+  - description: The Databricks App's main navigation reflects the new order and includes
+      'Creative Studio' and 'Evaluation'.
+    criterion_id: app-navigation-correct
+  - description: Users can navigate to 'Creative Studio', initiate synthetic image
+      generation, view generated variants, and see basic asset details.
+    criterion_id: creative-studio-view-functional
+  - description: Users can navigate to 'Evaluation' and view synthetic policy check
+      results and scores for generated assets.
+    criterion_id: evaluation-view-functional
+  - description: All newly implemented FastAPI endpoints respond correctly to requests
+      and interact with the data layer (Phase 1) as expected.
+    criterion_id: api-endpoints-responsive
+  - description: The 'Creative Studio' view successfully triggers the synthetic image
+      generation process (from Phase 1) and displays the resulting assets and variants.
+    criterion_id: synthetic-generation-in-app
+  - description: The Databricks App bundle deploys without errors and the application
+      is accessible.
+    criterion_id: app-deploys-successfully
+  expected_deliverables:
+  - name: Updated Databricks App Navigation
+    description: Databricks App navigation updated to include 'Creative Studio' and
+      'Evaluation' views in the specified order.
+    deliverable_id: updated-app-navigation
+  - name: MVP Creative Studio View
+    description: Functional 'Creative Studio' view allowing synthetic image generation,
+      display of variants, and basic adaptation options.
+    deliverable_id: creative-studio-mvp-view
+  - name: MVP Evaluation View
+    description: Functional 'Evaluation' view displaying synthetic policy checks,
+      rights checks, and scoring for creative assets.
+    deliverable_id: evaluation-mvp-view
+  - name: New FastAPI Endpoints for Creative Workflow
+    description: FastAPI endpoints implemented for core creative asset operations
+      (search, synthetic generation, variants, lineage, synthetic policy/evaluations).
+    deliverable_id: new-fastapi-endpoints
+  - name: Deployed Databricks App Bundle
+    description: The Databricks App bundle successfully deploys the updated application
+      with new UI and API endpoints.
+    deliverable_id: app-bundle-deployment
+- name: Model-Backed Creative Generation and Editing
+  size: medium
+  context:
+  - text: 'AI and Model Serving: Environment variables will be used for `CREATIVE_GENERATION_MODE`,
+      `CREATIVE_GENERATION_ENDPOINT`, `CREATIVE_EDITING_ENDPOINT`, `SYNTHETIC_AUDIENCE_JUDGE_ENDPOINT`,
+      `VISION_METADATA_ENDPOINT`, `EMBEDDING_ENDPOINT`. Databricks Foundation Model
+      APIs or Model Serving endpoints will be used for captioning, policy/brand checks,
+      synthetic audience judging, and prompt refinement. Databricks AI Functions will
+      be used for `ai_extract`, `ai_classify`, `ai_similarity`, and `ai_query`. Databricks
+      App Configuration: `my_project/app.yaml` will be updated to use Databricks App
+      resources for `CREATIVE_GENERATION_ENDPOINT`, `SYNTHETIC_AUDIENCE_JUDGE_ENDPOINT`.'
+    source: artifactPlan
+  - text: Databricks tokens, warehouse IDs, model endpoint credentials, or external
+      API keys will not be hardcoded. Policy version, model version, prompt version,
+      and evidence fields will be included for auditability.
+    source: assumptions
+  - text: 'Two creative creation routes will be supported: Search/retrieve governed
+      existing assets from a vector store and Generate new assets from audience traits,
+      brief context, and text instructions. The user will review several variants
+      (3 to 5) before adapting or activating one. Creatives will be adapted for placement
+      formats. Lineage will be tracked. Policy, rights, brand, regional, and safety
+      checks will occur before activation and appear as scores or blocks.'
+    source: decisions
+  - text: 'Which creative generation/editing service should be treated as the production
+      integration: custom Databricks Model Serving endpoint, Adobe Firefly, Runway,
+      another provider, or synthetic-only for the demo?'
+    source: openQuestions
+  phase_id: phase-3
+  objective: Integrate real model-backed creative generation and editing capabilities
+    into the Databricks App, replacing synthetic generation with actual AI model interactions.
+  dependencies:
+  - phase-2
+  phase_number: 3
+  delivery_area: ml_ai
+  excluded_scope:
+  - Extension of the workflow to support video assets.
+  - Comprehensive feedback ingestion and analysis.
+  - Ask AI functionality and Genie Space integration.
+  included_scope:
+  - Implementation of `CREATIVE_GENERATION_MODE=model_endpoint` to switch from synthetic
+    to actual model-backed generation.
+  - Integration with Databricks Foundation Model APIs or custom Model Serving endpoints
+    for creative generation (e.g., text-to-image, image-to-image).
+  - Integration with Databricks Foundation Model APIs or custom Model Serving endpoints
+    for creative editing (e.g., inpainting, outpainting, crop-safe-area).
+  - Implementation of API calls to Databricks Foundation Model APIs or Model Serving
+    endpoints for captioning, policy/brand checks, synthetic audience judging, and
+    prompt refinement.
+  - Updates to FastAPI endpoints and UI in `Creative Studio` to expose and control
+    model-backed generation and editing features.
+  - Development and implementation of a reviewer workflow within the Databricks App
+    for generated/edited assets.
+  - Updating `my_project/app.yaml` to include `CREATIVE_GENERATION_ENDPOINT`, `SYNTHETIC_AUDIENCE_JUDGE_ENDPOINT`.
+  split_rationale: This phase represents a significant upgrade to the core ML capabilities
+    of the application, transitioning from synthetic to actual model-backed generation
+    and editing. It's a distinct ML/AI deliverable that enhances the product's core
+    value proposition.
+  validation_plan:
+  - Test creative generation with different prompts and parameters using the model-backed
+    mode, verifying output quality and adherence to instructions.
+  - Exercise each creative editing control (inpainting, outpainting, crop-safe-area)
+    and visually inspect the results.
+  - Submit assets for policy/brand checks and synthetic evaluation, comparing model
+    output to expected behavior.
+  - Walk through the reviewer workflow with multiple users/roles to ensure correct
+    state transitions and notifications.
+  - Monitor Databricks Model Serving endpoint logs and metrics during generation/editing
+    to confirm model invocation.
+  acceptance_criteria:
+  - description: Users can select 'model_endpoint' generation mode and successfully
+      generate creative variants using an integrated AI model.
+    criterion_id: model-generation-functional
+  - description: The inpainting, outpainting, and crop-safe-area controls in the UI
+      successfully apply AI-driven edits to creative assets.
+    criterion_id: editing-controls-functional
+  - description: Policy/brand checks and synthetic audience judging are performed
+      by integrated AI models, and results are displayed in the 'Evaluation' view.
+    criterion_id: ai-checks-integrated
+  - description: The reviewer workflow allows users to review, approve, or reject
+      generated/edited assets, and this status is reflected in the asset lineage.
+    criterion_id: reviewer-workflow-operable
+  - description: Environment variables (`CREATIVE_GENERATION_ENDPOINT`, `SYNTHETIC_AUDIENCE_JUDGE_ENDPOINT`)
+      are correctly configured and used by the application.
+    criterion_id: model-env-vars-configured
+  expected_deliverables:
+  - name: Model-Backed Creative Generation
+    description: Ability to generate creative assets using actual AI models (Foundation
+      Models or custom Model Serving endpoints) via the 'Creative Studio' UI.
+    deliverable_id: model-backed-generation-feature
+  - name: AI-Powered Creative Editing Controls
+    description: UI controls and backend integration for AI-powered editing features
+      like inpainting, outpainting, and crop-safe-area.
+    deliverable_id: creative-editing-features
+  - name: AI Model Integration for Policy/Judgement
+    description: Integration with AI models for advanced captioning, policy/brand
+      checks, and synthetic audience judging, replacing synthetic logic.
+    deliverable_id: model-integration-for-checks
+  - name: Creative Reviewer Workflow
+    description: A functional workflow within the app for reviewing and approving
+      generated/edited creative assets.
+    deliverable_id: reviewer-workflow
+- name: Video Asset Workflow Extension
+  size: large
+  context:
+  - text: 'Phase 3 - Video Support: Extend workflow to video. Support video metadata,
+      transformations, policy checks, and synthetic evaluation.'
+    source: artifactPlan
+  - text: Image workflows will be prioritized first; video will be a later phase but
+      share the same architecture.
+    source: decisions
+  - text: Should the first demo support only images, or should video metadata appear
+      as disabled/coming-soon UI controls?
+    source: openQuestions
+  phase_id: phase-4
+  objective: Extend the creative asset workflow to support video, including metadata
+    management, transformations, policy checks, and synthetic evaluation for video
+    assets.
+  dependencies:
+  - phase-3
+  phase_number: 4
+  delivery_area: data_engineering
+  excluded_scope:
+  - Continuous improvement features.
+  - Ask AI functionality and Genie Space integration.
+  included_scope:
+  - Extension of the Unity Catalog volume and Delta tables to accommodate video assets,
+    including video-specific metadata fields.
+  - Development of data ingestion pipelines for video assets, similar to `pipelines/creative_asset_library.py`
+    but for video.
+  - Implementation of video transformation capabilities (e.g., resizing, format conversion,
+    thumbnail generation from video).
+  - Integration of ML models for video-specific policy checks, rights checks, and
+    synthetic evaluation.
+  - Updates to FastAPI endpoints to handle video asset uploads, processing, and retrieval.
+  - Updates to the `Creative Studio` and `Evaluation` views to display and interact
+    with video assets (e.g., video player, video-specific controls).
+  split_rationale: This phase introduces support for a completely new asset type (video),
+    requiring significant extensions across data engineering, ML, and the application
+    layer. It's a large, distinct feature increment that builds upon the established
+    image workflow.
+  validation_plan:
+  - Upload various video formats and sizes through the app/API and verify their storage
+    and metadata in UC.
+  - Execute the video processing pipeline and confirm successful transformations and
+    thumbnail generation.
+  - Submit video assets for policy/evaluation checks and review the results in the
+    'Evaluation' view.
+  - Test video playback and interaction within the Databricks App UI.
+  acceptance_criteria:
+  - description: Video assets can be uploaded and stored in the UC volume, and their
+      metadata is correctly captured in Delta tables.
+    criterion_id: video-assets-stored-correctly
+  - description: The video ingestion and transformation pipeline successfully processes
+      video files, generates thumbnails, and updates metadata.
+    criterion_id: video-pipeline-functional
+  - description: Video-specific policy checks and synthetic evaluations run successfully
+      and provide accurate results for video assets.
+    criterion_id: video-ml-checks-accurate
+  - description: Video assets are correctly displayed and playable within the 'Creative
+      Studio' and 'Evaluation' views of the Databricks App.
+    criterion_id: video-display-in-app
+  expected_deliverables:
+  - name: Video Asset Data Architecture
+    description: UC volume and Delta tables extended to store and manage video assets
+      and their metadata.
+    deliverable_id: video-asset-data-support
+  - name: Video Asset Ingestion and Transformation Pipeline
+    description: A data pipeline capable of ingesting video assets, performing transformations,
+      and generating video thumbnails.
+    deliverable_id: video-ingestion-pipeline
+  - name: ML Integration for Video Policy/Evaluation
+    description: ML models integrated for video-specific policy checks and synthetic
+      evaluation.
+    deliverable_id: video-ml-integration
+  - name: Databricks App Video Support
+    description: UI and API enhancements in 'Creative Studio' and 'Evaluation' views
+      to display and manage video assets.
+    deliverable_id: video-app-support
+- name: Continuous Improvement and Ask AI Integration
+  size: medium
+  context:
+  - text: 'UX Changes: `Ask AI` will remain available as a side panel or final tab,
+      backed by governed tables. AI and Model Serving: Databricks AI Functions will
+      be used for `ai_extract`, `ai_classify`, `ai_similarity`, and `ai_query`. Phase
+      4 - Continuous Improvement and Genie: Create feedback ingestion. Compare synthetic
+      scores to actual performance. Generate creative pattern summaries. Create or
+      update Genie Space for Ask AI.'
+    source: artifactPlan
+  - text: Ask AI / Genie will close the decision loop by answering questions over
+      briefs, audiences, variants, scores, policy results, activations, and feedback.
+    source: decisions
+  - text: Should the Ask AI path be implemented through Genie Space first, or remain
+      a lightweight API response until the data model stabilizes? Are brand guideline
+      rules available as structured data, documents, or only prompt text?
+    source: openQuestions
+  phase_id: phase-5
+  objective: Implement mechanisms for continuous improvement based on feedback and
+    performance data, and integrate the Ask AI functionality into the Databricks App,
+    potentially via a Genie Space.
+  dependencies:
+  - phase-4
+  phase_number: 5
+  delivery_area: analytics_bi
+  excluded_scope:
+  - Further extensions to new asset types or core creative generation/editing features.
+  included_scope:
+  - Development of a feedback ingestion pipeline and data model to capture user feedback
+    and performance data for creative assets.
+  - Implementation of analytics to compare synthetic scores to actual performance,
+    identifying discrepancies and insights.
+  - Development of functionality to generate creative pattern summaries and insights
+    based on performance data.
+  - Integration of 'Ask AI' functionality into the Databricks App, either as a side
+    panel or a final tab.
+  - Development of the 'Ask AI' backend using Databricks AI Functions (`ai_extract`,
+    `ai_classify`, `ai_similarity`, `ai_query`) over governed tables.
+  - Potential creation or update of a Databricks Genie Space for 'Ask AI' to provide
+    a conversational interface.
+  split_rationale: This phase focuses on closing the loop for the creative workflow
+    by adding feedback mechanisms, performance analytics, and an intelligent 'Ask
+    AI' interface. It leverages both data science/ML for insights and BI/App for user
+    interaction, making it a distinct final deliverable for continuous improvement.
+  validation_plan:
+  - Submit sample feedback and performance data and verify its ingestion and storage.
+  - Review generated analytics reports and creative pattern summaries for accuracy
+    and insights.
+  - Test 'Ask AI' with a variety of questions related to the creative workflow data
+    and verify the relevance and accuracy of responses.
+  - If a Genie Space is implemented, test its conversational capabilities and data
+    access.
+  - Verify that 'Ask AI' queries are executed against the correct governed tables.
+  acceptance_criteria:
+  - description: User feedback and performance metrics for creative assets are successfully
+      captured and stored in the feedback data model.
+    criterion_id: feedback-captured-and-stored
+  - description: The system generates meaningful comparisons between synthetic scores
+      and actual performance, and provides creative pattern summaries.
+    criterion_id: performance-insights-generated
+  - description: The 'Ask AI' feature in the Databricks App responds accurately to
+      queries about briefs, audiences, variants, scores, policy results, and activations.
+    criterion_id: ask-ai-functional-in-app
+  - description: The 'Ask AI' functionality correctly queries governed tables and
+      utilizes Databricks AI Functions for its responses.
+    criterion_id: ask-ai-uses-governed-data
+  - description: If implemented, the Databricks Genie Space for 'Ask AI' is accessible
+      and provides a functional conversational interface.
+    criterion_id: genie-space-functional-if-implemented
+  expected_deliverables:
+  - name: Creative Feedback Ingestion and Data Model
+    description: A system to capture and store user feedback and actual performance
+      data for creative assets.
+    deliverable_id: feedback-ingestion-system
+  - name: Creative Performance Analytics
+    description: Analytics and reports comparing synthetic scores to actual performance,
+      and identifying creative pattern summaries.
+    deliverable_id: performance-analytics-reports
+  - name: Ask AI Feature in Databricks App
+    description: A functional 'Ask AI' interface integrated into the Databricks App,
+      backed by governed data and AI Functions.
+    deliverable_id: ask-ai-integration
+  - name: Databricks Genie Space for Ask AI (Optional)
+    description: A dedicated Databricks Genie Space providing a conversational interface
+      for 'Ask AI' queries (if chosen over in-app only).
+    deliverable_id: genie-space-for-ask-ai
+phase_approval:
+  state: approved
+  approved: true
+  approved_at: '2026-05-28T20:20:26.617440+00:00'
+  approved_by: dev@lakefoundry.dev
+  approved_phase_ids:
+  - phase-1
+  - phase-2
+  - phase-3
+  - phase-4
+  - phase-5
