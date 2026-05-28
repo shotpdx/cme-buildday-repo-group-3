@@ -247,6 +247,15 @@ phase_roadmap:
     description: Root Data Bundle updated with `resources/creative_assets_volume.yml`,
       `resources/creative_workflow_pipeline.yml`, `resources/creative_generation_jobs.yml`.
     deliverable_id: data-bundle-resources
+  status: failed
+  progress: 100
+  latest_run:
+    id: b884be2d-8f3f-4d9f-a89f-956f14d2968c
+    state: failed
+    run_assessment: null
+    current_stage: preflight
+    started_at: '2026-05-28T20:29:14.507995+00:00'
+    ended_at: null
 - name: MVP Creative Studio App with Synthetic Generation
   size: large
   context:
