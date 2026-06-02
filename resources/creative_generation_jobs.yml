@@ -1,0 +1,66 @@
+resources:
+  jobs:
+    creative_synthetic_workflow_setup:
+      name: "[${bundle.target}] Creative Synthetic Workflow Setup"
+      description: Generates synthetic creative images, metadata tables, lineage, policy checks, synthetic audience evaluations, and onsite personalization export rows.
+      environments:
+        - environment_key: creative_synthetic_env
+          spec:
+            client: "4"
+      tasks:
+        - task_key: generate_synthetic_creative_workflow
+          environment_key: creative_synthetic_env
+          spark_python_task:
+            python_file: ../scripts/generate_synthetic_creative_workflow.py
+            source: WORKSPACE
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --source-catalog
+              - ${var.source_catalog}
+              - --source-schema
+              - ${var.source_schema}
+              - --volume
+              - ${var.creative_asset_volume}
+              - --asset-prefix
+              - creative_assets
+              - --destination-system
+              - ${var.activation_destination_system}
+              - --creative-model-endpoint
+              - ${var.creative_model_endpoint}
+              - --policy-model-endpoint
+              - ${var.creative_policy_model_endpoint}
+              - --judge-model-endpoint
+              - ${var.creative_judge_model_endpoint}
+      permissions:
+        - level: CAN_VIEW
+          group_name: users
+
+    creative_vector_search_setup:
+      name: "[${bundle.target}] Creative Vector Search Setup"
+      description: Creates or refreshes the Databricks Vector Search endpoint and Delta Sync index for governed creative asset retrieval.
+      environments:
+        - environment_key: creative_vector_env
+          spec:
+            client: "4"
+      tasks:
+        - task_key: setup_vector_search_index
+          environment_key: creative_vector_env
+          spark_python_task:
+            python_file: ../scripts/setup_creative_vector_search.py
+            source: WORKSPACE
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --endpoint
+              - ${var.creative_vector_search_endpoint}
+              - --index
+              - ${var.creative_vector_search_index}
+              - --recreate-index
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

@@ -210,6 +210,9 @@ out/
 # Local browser verification artifacts
 .playwright-mcp/
 local-app-home.png
+
+# Generated creative image seed packs live in UC Volumes.
+my_project/creative_demo_assets/
 .cursorignore
 .cursorindexingignore
 .claude/

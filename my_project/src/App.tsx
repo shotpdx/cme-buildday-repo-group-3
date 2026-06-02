@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  ShieldCheck,
   Sparkles,
   TrendingUp,
   Users,
@@ -52,7 +53,7 @@ import {
 import { feature } from "topojson-client";
 import statesTopology from "us-atlas/states-10m.json";
 
-type View = "overview" | "briefs" | "audiences" | "creatives" | "activations" | "markets" | "ask";
+type View = "overview" | "briefs" | "audiences" | "studio" | "evaluation" | "activations" | "markets" | "ask";
 type ArchitectureTab = "business" | "data" | "platform" | "agent";
 
 type Dashboard = {
@@ -121,6 +122,167 @@ type Creative = {
   predicted_ctr?: number;
 };
 
+type AudienceTrait = {
+  cohort_id: string;
+  trait_profile_id: string;
+  topic_affinity_json: string;
+  subscription_propensity_score: number;
+  churn_risk_score: number;
+  device_usage_json: string;
+  engagement_style: string;
+  lifecycle_stage: string;
+  preferred_tone: string;
+  creative_implications_text: string;
+};
+
+type CreativeAsset = {
+  asset_id: string;
+  asset_name: string;
+  asset_type: string;
+  storage_uri: string;
+  thumbnail_uri: string;
+  format: string;
+  width_px: number;
+  height_px: number;
+  aspect_ratio: string;
+  placement?: string;
+  demo_category?: string;
+  category_slug?: string;
+  related_asset_ids?: string[];
+  content_tags: string;
+  description: string;
+  recommended_usage?: string;
+  source_system?: string;
+  source_asset_external_id?: string;
+  rights_profile_id: string;
+  approved_usage_contexts_json: string;
+  historical_performance_json: string;
+  brand_safety_score: number;
+  status: string;
+};
+
+type CreativeGenerationRequest = {
+  request_id: string;
+  brief_id: string;
+  cohort_id: string;
+  placement: string;
+  campaign_objective: string;
+  content_type: string;
+  source_mode: string;
+  selected_base_asset_ids_json: string;
+  user_instructions: string;
+  requested_variant_count: number;
+  request_status: string;
+  created_ts: string;
+};
+
+type CreativeVariant = {
+  creative_asset_id: string;
+  request_id: string;
+  brief_id: string;
+  cohort_id: string;
+  source_asset_id: string;
+  parent_creative_asset_id: string;
+  reference_asset_id?: string;
+  reference_asset_name?: string;
+  reference_thumbnail_uri?: string;
+  reference_demo_category?: string;
+  variant_number: number;
+  asset_name: string;
+  asset_type: string;
+  placement: string;
+  format: string;
+  width_px: number;
+  height_px: number;
+  aspect_ratio: string;
+  storage_uri: string;
+  thumbnail_uri: string;
+  generation_prompt: string;
+  generation_model: string;
+  generation_params_json: string;
+  adaptation_summary: string;
+  approval_status: string;
+  approved_by?: string;
+  approved_ts?: string | null;
+  quality_score?: number;
+  predicted_ctr?: number;
+  target_segment?: string;
+  content_tags?: string;
+};
+
+type PolicyCheck = {
+  check_id: string;
+  creative_asset_id: string;
+  check_type: string;
+  check_status: string;
+  score: number;
+  blocking_reason: string;
+  policy_version: string;
+  model_or_rule: string;
+  review_required: boolean;
+};
+
+type SyntheticEvaluation = {
+  evaluation_id: string;
+  creative_asset_id: string;
+  cohort_id: string;
+  placement: string;
+  panel_size: number;
+  click_propensity_score: number;
+  expected_dwell_time_score: number;
+  subscription_start_propensity_score: number;
+  relevance_score: number;
+  clarity_score: number;
+  fatigue_risk_score: number;
+  brand_fit_score: number;
+  overall_score: number;
+  rank_within_segment_placement: number;
+  judge_model: string;
+};
+
+type CreativeLineageEdge = {
+  lineage_edge_id: string;
+  source_entity_type: string;
+  source_entity_id: string;
+  target_entity_type: string;
+  target_entity_id: string;
+  relationship_type: string;
+};
+
+type CreativeTransformation = {
+  transformation_id: string;
+  creative_asset_id: string;
+  input_asset_id: string;
+  output_asset_id: string;
+  transformation_type: string;
+  edit_sequence: number;
+  edit_label: string;
+  edit_goal: string;
+  placement: string;
+  source_width_px: number;
+  source_height_px: number;
+  source_aspect_ratio: string;
+  output_width_px: number;
+  output_height_px: number;
+  output_aspect_ratio: string;
+  tool_or_model: string;
+  edit_status: string;
+};
+
+type ActivationExport = {
+  export_id: string;
+  creative_asset_id: string;
+  cohort_id: string;
+  placement: string;
+  destination_system: string;
+  destination_asset_id: string;
+  export_status: string;
+  payload_uri: string;
+  exported_by?: string;
+  exported_ts?: string;
+  error_message?: string;
+};
+
 type Activation = {
   activation_id: string;
   creative_asset_id: string;
@@ -133,6 +295,44 @@ type Activation = {
   cost: number;
   ab_test_id: string | null;
   last_sync_ts: string;
+  activation_source?: string;
+  placement?: string;
+  cohort_id?: string;
+  destination_asset_id?: string;
+  export_id?: string;
+};
+
+type ActivationSubmitResponse = {
+  export: ActivationExport;
+  activation: Activation;
+};
+
+type ActivationLineageStep = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  title: string;
+  subtitle: string;
+  status?: string;
+  metadata: Record<string, string>;
+};
+
+type ActivationLineage = {
+  activation_id: string;
+  activation?: Activation | null;
+  export?: ActivationExport | null;
+  creative?: Creative | null;
+  creative_variant?: CreativeVariant | null;
+  generation_request?: CreativeGenerationRequest | null;
+  brief?: Brief | null;
+  audience?: Audience | null;
+  reference_asset?: CreativeAsset | null;
+  steps: ActivationLineageStep[];
+  evidence: Array<{ label: string; value: string }>;
+  transformations: CreativeTransformation[];
+  policy_checks: PolicyCheck[];
+  synthetic_evaluations: SyntheticEvaluation[];
+  lineage_edges: CreativeLineageEdge[];
 };
 
 type MarketCity = {
@@ -179,6 +379,9 @@ type BackendTable = {
 };
 
 type BackendTables = {
+  data_source?: string;
+  catalog?: string;
+  schema?: string;
   data_dir: string;
   bundle_ready: boolean;
   tables: BackendTable[];
@@ -188,6 +391,11 @@ type ModelStatus = {
   audience_lens_uses_model_serving: boolean;
   serving_endpoint_configured: boolean;
   configured_endpoint: string | null;
+  creative_generation_mode?: string;
+  creative_model_endpoint?: string;
+  creative_image_model?: string;
+  policy_model_endpoint?: string;
+  judge_model_endpoint?: string;
   mode: string;
   checked_path: string;
   verified: boolean;
@@ -203,6 +411,15 @@ type AgencyData = {
   markets: MarketRegion[];
   backendTables: BackendTables;
   modelStatus: ModelStatus;
+  audienceTraits: AudienceTrait[];
+  creativeAssets: CreativeAsset[];
+  generationRequests: CreativeGenerationRequest[];
+  creativeVariants: CreativeVariant[];
+  policyChecks: PolicyCheck[];
+  syntheticEvaluations: SyntheticEvaluation[];
+  lineageEdges: CreativeLineageEdge[];
+  creativeTransformations: CreativeTransformation[];
+  activationExports: ActivationExport[];
 };
 
 type AskResult = {
@@ -237,90 +454,189 @@ type DataContractGap = {
 };
 
 const COLORS = ["#0f9f95", "#256b8f", "#c7793a", "#5b65d8", "#1f9d72", "#d89a23", "#b65aa6"];
-const ASK_SUGGESTIONS = ["average CTR by audience", "activation status", "creative quality", "campaign ROI"];
+const GENIE_RECOMMENDED_QUESTIONS = [
+  "Which base creative assets are approved for homepage hero placements for sports audiences?",
+  "Which policy checks are blocked, warning, or require review, and what evidence was recorded?",
+  "Which pending review variants are missing policy checks or synthetic audience evaluations?",
+  "Where did live performance differ most from synthetic audience predictions?",
+  "Which briefs have generated variants, approved winners, policy checks, and activation exports?",
+  "Which creatives are ready for onsite personalization activation exports?",
+  "Which base assets have rights constraints that block social or newsletter usage?",
+  "What audience traits should influence creative direction for churn-risk sports cohorts?",
+  "Which generation model endpoints produced the current variants, and which variants are approved?",
+  "Which approved creative variants rank highest by segment and placement?",
+  "Compare synthetic audience scores by placement, cohort, and creative variant.",
+  "What transformations were applied to each creative variant, including crop, inpaint, outpaint, and aspect-ratio conversion?",
+];
 const PACING_WINDOWS = [7, 14, 30] as const;
 type PacingWindow = (typeof PACING_WINDOWS)[number];
+const PLACEMENT_OPTIONS = ["homepage_hero", "app_tile", "newsletter_banner", "social_square", "story_unit"];
+const PLACEMENT_DIMENSIONS: Record<string, string> = {
+  homepage_hero: "1280x720",
+  app_tile: "1080x1080",
+  newsletter_banner: "1200x200",
+  social_square: "1080x1080",
+  story_unit: "1080x1920",
+};
+type ActivationChannel = {
+  id: string;
+  label: string;
+  baseCpm: number;
+  ctrLift: number;
+  placementFit: Partial<Record<string, number>>;
+};
+type ChannelProjection = {
+  channel: ActivationChannel;
+  score: number;
+  projectedCtr: number;
+  projectedCpm: number;
+  projectedConversions: number;
+};
+const ACTIVATION_CHANNELS: ActivationChannel[] = [
+  {
+    id: "Meta",
+    label: "Meta",
+    baseCpm: 11.4,
+    ctrLift: 0.22,
+    placementFit: { social_square: 14, story_unit: 13, app_tile: 4, homepage_hero: -2, newsletter_banner: -4 },
+  },
+  {
+    id: "Google Ads",
+    label: "Google Ads",
+    baseCpm: 9.8,
+    ctrLift: 0.16,
+    placementFit: { newsletter_banner: 8, social_square: 6, homepage_hero: 3, app_tile: 3, story_unit: 0 },
+  },
+  {
+    id: "DV360",
+    label: "DV360",
+    baseCpm: 8.9,
+    ctrLift: 0.08,
+    placementFit: { homepage_hero: 9, newsletter_banner: 8, social_square: 3, app_tile: 2, story_unit: -2 },
+  },
+  {
+    id: "The Trade Desk",
+    label: "The Trade Desk",
+    baseCpm: 10.6,
+    ctrLift: 0.1,
+    placementFit: { homepage_hero: 7, newsletter_banner: 5, social_square: 5, app_tile: 1, story_unit: 0 },
+  },
+  {
+    id: "Adobe Target",
+    label: "Adobe Target",
+    baseCpm: 6.6,
+    ctrLift: 0.2,
+    placementFit: { homepage_hero: 15, app_tile: 12, newsletter_banner: 2, social_square: 1, story_unit: -3 },
+  },
+  {
+    id: "Email",
+    label: "Email",
+    baseCpm: 3.2,
+    ctrLift: 0.12,
+    placementFit: { newsletter_banner: 15, homepage_hero: 1, app_tile: 1, social_square: -2, story_unit: -5 },
+  },
+];
+const EDIT_OPERATION_OPTIONS = [
+  "resize",
+  "crop",
+  "inpaint",
+  "outpaint",
+  "cleanup",
+  "background_extension",
+  "text_safe_area_adjustment",
+  "aspect_ratio_conversion",
+];
 const ARCHITECTURE_ROWS = [
   {
-    source: ["Campaign Briefs", "Planning / CRM"],
-    stream: ["brief.sync", "strategy"],
-    bronze: ["bronze_briefs", "raw brief payloads"],
-    silver: ["silver_campaigns", "validated objectives"],
-    gold: ["gold_dashboard", "executive KPIs"],
+    source: ["Briefs + C360", "detail modal + audience inventory"],
+    stream: ["brief.audience", "objective, segment, match"],
+    bronze: ["source briefs", "campaign and owner signals"],
+    silver: ["trait profiles", "creative direction fields"],
+    gold: ["gold_audience_trait_profile", "segment-ready traits"],
   },
   {
-    source: ["Customer 360 Audiences", "CDP / Identity"],
-    stream: ["audience.segments", "cohorts"],
-    bronze: ["bronze_audiences", "raw memberships"],
-    silver: ["silver_cohorts", "reach + match"],
-    gold: ["gold_audience_reach", "activation-ready cohorts"],
+    source: ["Seed Images", "UC Volume by category"],
+    stream: ["asset.manifest", "metadata + rights + preview"],
+    bronze: ["volume image files", "governed PNG assets"],
+    silver: ["asset search corpus", "embedding-ready text"],
+    gold: ["Vector Search Index", "governed retrieval"],
   },
   {
-    source: ["Creative Assets", "DAM / GenAI"],
-    stream: ["creative.assets", "metadata"],
-    bronze: ["bronze_creatives", "asset records"],
-    silver: ["silver_creative_quality", "approval + scoring"],
-    gold: ["gold_creative_slate", "ready assets"],
+    source: ["Generation Requests", "brief + category + prompt"],
+    stream: ["creative.generate", "RAG + endpoint invocation"],
+    bronze: ["request payload", "instructions + seed reference"],
+    silver: ["variant slate", "embedded image preview"],
+    gold: ["app_creative_variants", "Lakebase + live state"],
   },
   {
-    source: ["Media Activations", "Ad platforms"],
-    stream: ["activation.events", "delivery"],
-    bronze: ["bronze_activations", "raw platform logs"],
-    silver: ["silver_delivery", "clean delivery"],
-    gold: ["gold_activation_kpi", "spend + response"],
+    source: ["Adaptation Events", "resize + edit operations"],
+    stream: ["creative.adapt", "placement transforms"],
+    bronze: ["edit request", "target placement"],
+    silver: ["transformation log", "crop/inpaint/outpaint/etc."],
+    gold: ["gold_creative_transformation", "lineage + reuse"],
   },
   {
-    source: ["Market Signals", "Geo / spend"],
-    stream: ["market.signals", "regional feed"],
-    bronze: ["bronze_markets", "raw geo signals"],
-    silver: ["silver_geo", "region + metro"],
-    gold: ["gold_market_opportunity", "scale / test / optimize"],
+    source: ["Review + Activate", "policy, judge, approval"],
+    stream: ["creative.activate", "checks + synthetic audience"],
+    bronze: ["policy evidence", "brand/rights/safety"],
+    silver: ["ranked evaluations", "approved scored rows"],
+    gold: ["app_activation_exports", "Activation dashboard"],
   },
 ];
 const ARCH_SERVING_NODES = [
-  ["SQL Warehouse", "Statement API + governed metrics"],
-  ["Lakebase", "PostgreSQL wire protocol"],
-  ["Genie Space", "Natural-language analytics"],
-  ["FastAPI", "Databricks App API boundary"],
-  ["React", "Creative Command Center"],
+  ["SQL Warehouse", "Databricks table reads"],
+  ["Genie + Fallback", "Ask AI governed answers"],
+  ["Vector Search", "seed image RAG retrieval"],
+  ["Model Serving", "generation, policy, judge endpoints"],
+  ["Lakebase", "durable app state"],
+  ["FastAPI", "workflow API boundary"],
+  ["React App", "Creative Command Center"],
 ];
-const ARCH_TAGS = ["domain=marketing", "sensitivity=internal", "data_classification=pii", "quality=validated", "refresh_cadence=near-real-time"];
+const ARCH_TAGS = ["domain=creative", "seed-images=governed", "lineage=variant-level", "state=lakebase", "activation=dashboard"];
 const ARCH_PLATFORM_SERVICES = [
   ["Asset Bundles", "CI/CD deployment"],
-  ["Serverless Compute", "Pipeline + API runtime"],
-  ["SQL Warehouse", "Serving + BI compute"],
-  ["Secrets", "Credential store"],
+  ["Databricks Apps", "React + FastAPI runtime"],
+  ["Genie", "curated questions + governed fallback"],
+  ["Lakebase", "persistent app state"],
+  ["Vector Search", "seed-image RAG index"],
+  ["UC Volumes", "category seed images"],
 ];
 const DATA_CONTRACT_GAPS: DataContractGap[] = [
   {
-    surface: "Audiences",
-    mockCsv: "Adds match_rate, avg_ltv, and last_updated_ts for charts.",
-    pipeline: "gold_buyside_audience_cohort emits definition_value, feature_summary_text, last_refreshed_ts, and eligibility flags.",
-    recommendation: "Derive match_rate and value metrics in the API or change the UI to label them as unavailable when reading the pipeline table directly.",
+    surface: "Audience traits",
+    mockCsv: "Demo fallback derives topic affinity, lifecycle stage, tone, churn risk, device usage, and creative implications from bundled rows.",
+    pipeline: "gold_buyside_audience_trait_profile stores the creative-relevant trait profile used by generation requests.",
+    recommendation: "Keep segment definitions and trait profiles separate: the segment says who, the trait profile says how creative should change.",
   },
   {
-    surface: "Creatives",
-    mockCsv: "Adds quality_score, predicted_ctr, semicolon tags, and created_at.",
-    pipeline: "gold_buyside_generated_creatives emits created_ts, updated_ts, generation_params, target_content_genre, and comma-separated content_tags.",
-    recommendation: "Normalize tags and map created_ts to the UI contract; add a scoring table or model output for quality_score and predicted_ctr.",
+    surface: "Approved base assets",
+    mockCsv: "Demo fallback creates governed source assets with rights metadata, performance metadata, and approved channel contexts.",
+    pipeline: "UC Volume seed_images/manifest.json, gold_buyside_base_creative_asset, and gold_buyside_asset_search_corpus back category retrieval and Vector Search.",
+    recommendation: "Use the manifest for visual inspection and the search corpus for retrieval; keep category, placement, rights, and related app asset IDs aligned.",
   },
   {
-    surface: "Activations",
-    mockCsv: "Uses a compact activation record shaped exactly for the table.",
-    pipeline: "gold_buyside_campaign_activation also includes line_item_id, brief_id, destination_placement_id, activation_ts, metrics update time, and ab_test_variant_id.",
-    recommendation: "The UI can keep its current columns, but the API should pass through line item and variant fields when deeper drilldowns are added.",
+    surface: "Generation and adaptation",
+    mockCsv: "Live generated variants are persisted in Lakebase when available and fall back to in-memory state for local demo runs.",
+    pipeline: "gold_buyside_creative_generation_request, gold_buyside_creative_variant, app_creative_variants, and app_creative_transformations carry request, seed reference, model, prompt, edit, and lineage metadata.",
+    recommendation: "Keep generated thumbnails tied to reference seed images and Lakebase state so refreshes do not lose review or activation history.",
   },
   {
-    surface: "Overview and Markets",
-    mockCsv: "Uses dashboard, activity, channel mix, quality radar, market, metro, and trend extracts.",
-    pipeline: "The current pipeline files do not create gold_market_* or dashboard aggregate tables with these exact names.",
-    recommendation: "Create aggregate views from activation, creative, and audience tables or continue treating these CSVs as demo-only presentation extracts.",
+    surface: "Policy and approval",
+    mockCsv: "Fallback policy rows return pass/warn records for generated variants.",
+    pipeline: "gold_buyside_creative_policy_check records brand, rights, regional usage, and safety review evidence. Studio approval updates variant approval status.",
+    recommendation: "Keep approval on the Studio page because Evaluation intentionally shows only approved scored variants.",
   },
   {
-    surface: "Briefs",
-    mockCsv: "Includes owner, budget, concepts_count, and creatives_count.",
-    pipeline: "Briefs are sourced from media_demo.gold_media_creative_briefs, so optional planning fields may not match the CSV surface.",
-    recommendation: "Confirm the source brief schema and compute counts from concepts and generated creatives before replacing the CSV extract.",
+    surface: "Evaluation and activation",
+    mockCsv: "Fallback synthetic audience rows rank approved variants by segment and placement.",
+    pipeline: "gold_buyside_synthetic_audience_eval, gold_buyside_activation_export, app_activation_exports, and app_activations support approved-only scoring, Activate actions, and dashboard visibility.",
+    recommendation: "Use activation submissions and feedback rows to compare live performance against synthetic prediction and improve future prompts and retrieval.",
+  },
+  {
+    surface: "Ask AI",
+    mockCsv: "Local fallback maps curated questions to governed workflow rows so demo users get useful answers even when Genie rejects free-form phrasing.",
+    pipeline: "Configured Genie Space answers curated questions first; the FastAPI endpoint retries the closest sample question and falls back to governed table summaries.",
+    recommendation: "Keep suggested prompts aligned to Genie samples and phrase fallback answers as Ask AI results, not backend failure messages.",
   },
 ];
 const JOURNEY_STEPS: JourneyStep[] = [
@@ -339,8 +655,8 @@ const JOURNEY_STEPS: JourneyStep[] = [
     id: "briefs",
     title: "Brief intake",
     navLabel: "Brief",
-    description: "Campaign objective, audience intent, budget, and owner align into a launch-ready brief.",
-    userGoal: "Confirm strategy, ownership, budget, and approval readiness.",
+    description: "Campaign objective, audience intent, budget, owner, and supporting detail align into a launch-ready brief.",
+    userGoal: "Open each brief detail view to confirm strategy, ownership, budget, objective, and approval readiness.",
     signal: "Strategy",
     outcome: "Launch-ready brief",
     icon: FileText,
@@ -350,41 +666,41 @@ const JOURNEY_STEPS: JourneyStep[] = [
     id: "audiences",
     title: "Audience lens",
     navLabel: "Audience",
-    description: "Segments are sized, governed, and compared through reach, match rate, and value signals.",
-    userGoal: "Choose the highest-fit audience cohorts and spot governance constraints.",
+    description: "Segments are sized, governed, and compared through a readable reach, match-rate, and value inventory.",
+    userGoal: "Choose the highest-fit audience cohorts and spot region, channel, and frequency constraints.",
     signal: "C360",
     outcome: "Prioritized audience plan",
     icon: Users,
     color: "#0f9f95",
   },
   {
-    id: "creatives",
-    title: "Creative scoring",
-    navLabel: "Creative",
-    description: "Generated assets are evaluated for approval status, quality, predicted CTR, and fit.",
-    userGoal: "Identify which creative assets are ready, risky, or worth iterating.",
-    signal: "Quality",
-    outcome: "Approved creative slate",
+    id: "studio",
+    title: "Creative studio",
+    navLabel: "Studio",
+    description: "Filter governed seed images by category, generate RAG-backed variants, preview full images, and adapt placements.",
+    userGoal: "Create rights-aware image variants from audience traits, selected category, Vector Search references, and approved seed assets.",
+    signal: "Generate",
+    outcome: "Variant slate",
     icon: Palette,
     color: "#5b65d8",
   },
   {
-    id: "markets",
-    title: "Market expansion",
-    navLabel: "Market",
-    description: "Geography overlays expose regional opportunity and metro-level media priorities.",
-    userGoal: "Decide where to scale, optimize, or test by region and metro.",
-    signal: "Geo",
-    outcome: "Market action map",
-    icon: MapPinned,
+    id: "evaluation",
+    title: "Evaluation gate",
+    navLabel: "Evaluate",
+    description: "Policy checks, rights constraints, and synthetic audiences rank approved variants before Activate sends them onward.",
+    userGoal: "Select compliant, high-scoring creatives and activate them into the downstream dashboard.",
+    signal: "Score",
+    outcome: "Approved winner",
+    icon: ShieldCheck,
     color: "#c7793a",
   },
   {
     id: "activations",
     title: "Activation control",
     navLabel: "Activate",
-    description: "Platform delivery, spend, conversions, and sync status are monitored in one control layer.",
-    userGoal: "Track live delivery, platform spend, trafficking status, and conversion response.",
+    description: "Activated exports, submitted channels, platform delivery, spend, conversions, and sync status are monitored in one control layer.",
+    userGoal: "Track live delivery and every new Activate action without losing state after app updates.",
     signal: "Live",
     outcome: "Controlled media execution",
     icon: RadioTower,
@@ -394,8 +710,8 @@ const JOURNEY_STEPS: JourneyStep[] = [
     id: "ask",
     title: "Decision loop",
     navLabel: "Ask AI",
-    description: "Ask AI turns campaign data into answers, tables, and next-best-action context.",
-    userGoal: "Ask questions, validate assumptions, and translate data into the next move.",
+    description: "Ask AI uses the curated Genie space first, then governed workflow summaries when free-form phrasing needs a fallback.",
+    userGoal: "Ask questions across variants, approvals, policy checks, evaluations, lineage, and activation readiness.",
     signal: "AI",
     outcome: "Decision support",
     icon: Bot,
@@ -406,8 +722,8 @@ const NAV_ITEMS: Array<{ id: View; label: string; icon: typeof Gauge }> = [
   { id: "overview", label: "Overview", icon: Gauge },
   { id: "briefs", label: "Briefs", icon: FileText },
   { id: "audiences", label: "Audiences", icon: Users },
-  { id: "creatives", label: "Creatives", icon: Palette },
-  { id: "markets", label: "Markets", icon: MapPinned },
+  { id: "studio", label: "Creative Studio", icon: Palette },
+  { id: "evaluation", label: "Evaluation", icon: ShieldCheck },
   { id: "activations", label: "Activations", icon: RadioTower },
   { id: "ask", label: "Ask AI", icon: Bot },
 ];
@@ -584,6 +900,10 @@ function formatMoney(value: number) {
   }).format(value);
 }
 
+function labelize(value: string) {
+  return value.replaceAll("_", " ");
+}
+
 function pct(numerator: number, denominator: number) {
   return denominator ? ((numerator / denominator) * 100).toFixed(2) : "0.00";
 }
@@ -602,7 +922,8 @@ function optionalMoney(value: unknown) {
 }
 
 function audienceMatchPercent(audience: Audience) {
-  return isFiniteNumber(audience.match_rate) ? Math.round(audience.match_rate * 100) : null;
+  if (!isFiniteNumber(audience.match_rate)) return derivedAudienceMatchPercent(audience);
+  return Math.round(audience.match_rate > 1 ? audience.match_rate : audience.match_rate * 100);
 }
 
 function creativeQualityScore(creative: Creative) {
@@ -627,8 +948,115 @@ function audienceChartLabel(name: string) {
     .replace("Premium Upgrade Lookalikes", "Premium Upgrade")
     .replace("Live Sports Loyalists", "Sports Loyalists")
     .replace("Family Co-Viewing", "Family Co-View")
+    .replace("Entertainment Seeker", "Entertainment")
+    .replace("High Value Professional", "High Value Pro")
+    .replace("Subscription", "Sub.")
     .replace("Churn Risk: Sports", "Churn Risk")
     .replace("Suppression: Service Issues", "Service Supp.");
+}
+
+function stableAudienceScore(audience: Audience) {
+  const seed = `${audience.cohort_id}|${audience.cohort_name}`;
+  const total = Array.from(seed).reduce((sum, char, index) => sum + char.charCodeAt(0) * (index + 1), 0);
+  return (total % 1000) / 1000;
+}
+
+function derivedAudienceMatchPercent(audience: Audience) {
+  const name = audience.cohort_name.toLowerCase();
+  let score = 70 + Math.round(stableAudienceScore(audience) * 16);
+  if (audience.is_region_allowed) score += 3;
+  if (audience.is_channel_allowed) score += 3;
+  if (audience.is_frequency_capped) score += 2;
+  if (name.includes("churn") || name.includes("reactivat")) score += 3;
+  if (name.includes("suppression") || name.includes("service")) score += 4;
+  if (name.includes("lookalike")) score -= 2;
+  return clampNumber(score, 62, 97);
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9.% ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function channelProjectionFor(evaluation: SyntheticEvaluation, channel: ActivationChannel): ChannelProjection {
+  const placementFit = channel.placementFit[evaluation.placement] ?? 0;
+  const score = Math.round(
+    clampNumber(
+      evaluation.overall_score * 0.58 +
+        evaluation.click_propensity_score * 0.18 +
+        evaluation.brand_fit_score * 0.14 +
+        (100 - evaluation.fatigue_risk_score) * 0.1 +
+        placementFit,
+      0,
+      99,
+    ),
+  );
+  const projectedCtr = clampNumber((evaluation.click_propensity_score / 100) * 2.9 + channel.ctrLift + placementFit / 55, 0.25, 5.4);
+  const projectedCpm = Math.max(2.5, channel.baseCpm + Math.max(0, 82 - evaluation.relevance_score) * 0.025 + Math.max(0, placementFit) * 0.03);
+  const projectedConversions = Math.round((evaluation.subscription_start_propensity_score * score) / 10);
+  return { channel, score, projectedCtr, projectedCpm, projectedConversions };
+}
+
+function channelProjectionsFor(evaluation: SyntheticEvaluation) {
+  return ACTIVATION_CHANNELS.map((channel) => channelProjectionFor(evaluation, channel));
+}
+
+function recommendedChannelFor(evaluation: SyntheticEvaluation) {
+  const [best] = [...channelProjectionsFor(evaluation)].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.projectedCpm - b.projectedCpm;
+  });
+  return best ?? channelProjectionFor(evaluation, ACTIVATION_CHANNELS[0]);
+}
+
+function channelScoreClass(score: number) {
+  if (score >= 82) return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (score >= 70) return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function policyStatusFor(checks: PolicyCheck[], predicate: (check: PolicyCheck) => boolean) {
+  const relevant = checks.filter(predicate);
+  if (!relevant.length) return "warn";
+  if (relevant.some((check) => ["fail", "failed", "block", "blocked"].includes(check.check_status.toLowerCase()))) return "block";
+  if (relevant.some((check) => check.review_required || ["warn", "warning", "review"].includes(check.check_status.toLowerCase()))) return "warn";
+  return "pass";
+}
+
+function readinessChipClass(status: "pass" | "warn" | "block") {
+  if (status === "pass") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (status === "block") return "bg-red-50 text-red-700 border-red-200";
+  return "bg-amber-50 text-amber-700 border-amber-200";
+}
+
+function variantReadinessChecks(variant: CreativeVariant, checks: PolicyCheck[]) {
+  const quality = optionalNumber(variant.quality_score);
+  return [
+    {
+      label: "Brand fit",
+      status: quality === null ? policyStatusFor(checks, (check) => check.check_type.toLowerCase().includes("brand")) : quality >= 78 ? "pass" : quality >= 68 ? "warn" : "block",
+    },
+    {
+      label: "Compliance",
+      status: policyStatusFor(checks, (check) => ["policy", "compliance", "regional"].some((term) => check.check_type.toLowerCase().includes(term))),
+    },
+    {
+      label: "Image safety",
+      status: policyStatusFor(checks, (check) => ["safety", "sensitive", "moderation"].some((term) => check.check_type.toLowerCase().includes(term))),
+    },
+    {
+      label: "Rights",
+      status: policyStatusFor(checks, (check) => ["rights", "license", "usage"].some((term) => check.check_type.toLowerCase().includes(term))),
+    },
+  ] as Array<{ label: string; status: "pass" | "warn" | "block" }>;
 }
 
 function statusClass(status: string) {
@@ -870,13 +1298,32 @@ function App() {
   const [architectureTab, setArchitectureTab] = useState<ArchitectureTab>("data");
   const [talkTrackOpen, setTalkTrackOpen] = useState(false);
   const [data, setData] = useState<AgencyData | null>(null);
+  const [submittedActivations, setSubmittedActivations] = useState<Activation[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let ignore = false;
     async function loadData() {
       try {
-        const [dashboard, briefs, audiences, creatives, activations, markets, backendTables, modelStatus] = await Promise.all([
+        const [
+          dashboard,
+          briefs,
+          audiences,
+          creatives,
+          activations,
+          markets,
+          backendTables,
+          modelStatus,
+          audienceTraits,
+          creativeAssets,
+          generationRequests,
+          creativeVariants,
+          policyChecks,
+          syntheticEvaluations,
+          lineageEdges,
+          creativeTransformations,
+          activationExports,
+        ] = await Promise.all([
           fetchJson<Dashboard>("/api/dashboard"),
           fetchJson<Brief[]>("/api/briefs"),
           fetchJson<Audience[]>("/api/audiences"),
@@ -885,8 +1332,37 @@ function App() {
           fetchJson<MarketRegion[]>("/api/markets"),
           fetchJson<BackendTables>("/api/backend-tables"),
           fetchJson<ModelStatus>("/api/model-status"),
+          fetchJson<AudienceTrait[]>("/api/audience-traits"),
+          fetchJson<CreativeAsset[]>("/api/creative-assets/search"),
+          fetchJson<CreativeGenerationRequest[]>("/api/creative-generation/requests"),
+          fetchJson<CreativeVariant[]>("/api/creative-variants"),
+          fetchJson<PolicyCheck[]>("/api/policy-checks"),
+          fetchJson<SyntheticEvaluation[]>("/api/synthetic-evaluations"),
+          fetchJson<CreativeLineageEdge[]>("/api/creative-lineage-edges"),
+          fetchJson<CreativeTransformation[]>("/api/creative-transformations"),
+          fetchJson<ActivationExport[]>("/api/activation-exports"),
         ]);
-        if (!ignore) setData({ dashboard, briefs, audiences, creatives, activations, markets, backendTables, modelStatus });
+        if (!ignore) {
+          setData({
+            dashboard,
+            briefs,
+            audiences,
+            creatives,
+            activations,
+            markets,
+            backendTables,
+            modelStatus,
+            audienceTraits,
+            creativeAssets,
+            generationRequests,
+            creativeVariants,
+            policyChecks,
+            syntheticEvaluations,
+            lineageEdges,
+            creativeTransformations,
+            activationExports,
+          });
+        }
       } catch (err) {
         if (!ignore) setError(err instanceof Error ? err.message : "Unable to load app data");
       }
@@ -911,6 +1387,21 @@ function App() {
   function openArchitecture(tab: ArchitectureTab) {
     setArchitectureTab(tab);
     setArchitectureOpen(true);
+  }
+
+  function handleActivationSubmitted(activation: Activation, exportRecord: ActivationExport) {
+    setSubmittedActivations((current) => [
+      activation,
+      ...current.filter((item) => item.activation_id !== activation.activation_id),
+    ]);
+    setData((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        activations: [activation, ...current.activations.filter((item) => item.activation_id !== activation.activation_id)],
+        activationExports: [exportRecord, ...current.activationExports.filter((item) => item.export_id !== exportRecord.export_id)],
+      };
+    });
   }
 
   return (
@@ -1020,8 +1511,9 @@ function App() {
                   {view === "overview" && <Overview data={data} />}
                   {view === "briefs" && <Briefs briefs={data.briefs} />}
                   {view === "audiences" && <Audiences audiences={data.audiences} modelStatus={data.modelStatus} />}
-                  {view === "creatives" && <Creatives creatives={data.creatives} />}
-                  {view === "activations" && <Activations activations={data.activations} />}
+                  {view === "studio" && <CreativeStudio data={data} />}
+                  {view === "evaluation" && <Evaluation data={data} onActivationSubmitted={handleActivationSubmitted} />}
+                  {view === "activations" && <Activations activations={data.activations} newSubmissions={submittedActivations} />}
                   {view === "markets" && <Markets markets={data.markets} />}
                   {view === "ask" && <AskDesk />}
                 </motion.div>
@@ -1146,7 +1638,7 @@ function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view
           <div>
             <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Brief to optimization loop</p>
             <p className="mt-1 text-[13px] leading-6 text-[var(--muted)]">
-              The working loop starts once strategy is defined, then cycles through audience, creative, market, activation, and AI-assisted optimization.
+              The working loop starts once strategy is defined, then cycles through audience, creative generation, evaluation, activation, and AI-assisted optimization.
             </p>
           </div>
           <span className="inline-flex w-fit items-center gap-2 rounded-md bg-[var(--panel-soft)] px-3 py-2 text-[12px] font-semibold text-[var(--muted)]">
@@ -1342,10 +1834,20 @@ function Overview({ data }: { data: AgencyData }) {
 function Briefs({ briefs }: { briefs: Brief[] }) {
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
+  const [selectedBrief, setSelectedBrief] = useState<Brief | null>(null);
   const filtered = briefs.filter((brief) => {
-    const text = `${brief.brief_name} ${brief.brand_name} ${brief.owner ?? ""}`.toLowerCase();
-    return (status === "all" || brief.status === status) && (!search || text.includes(search.toLowerCase()));
+    const text = normalizeSearchText(`${brief.brief_name} ${brief.brand_name} ${brief.owner ?? ""} ${brief.campaign_objective}`);
+    return (status === "all" || brief.status === status) && (!search || text.includes(normalizeSearchText(search)));
   });
+
+  useEffect(() => {
+    if (!selectedBrief) return undefined;
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setSelectedBrief(null);
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [selectedBrief]);
 
   return (
     <div className="space-y-5">
@@ -1370,6 +1872,7 @@ function Briefs({ briefs }: { briefs: Brief[] }) {
                 <th className="px-4 py-3 text-right">Assets</th>
                 <th className="px-4 py-3">Owner</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--line)]">
@@ -1385,27 +1888,109 @@ function Briefs({ briefs }: { briefs: Brief[] }) {
                   <td className="px-4 py-4 text-right font-mono text-[13px]">{brief.creatives_count ?? "N/A"}</td>
                   <td className="px-4 py-4 text-[13px]">{brief.owner ?? "N/A"}</td>
                   <td className="px-4 py-4"><StatusPill value={brief.status} /></td>
+                  <td className="px-4 py-4">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBrief(brief)}
+                      className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-bold text-[var(--ink)] transition-colors hover:bg-[var(--panel-soft)]"
+                    >
+                      <Maximize2 size={14} />
+                      View
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </Panel>
+      <AnimatePresence>
+        {selectedBrief ? (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={() => setSelectedBrief(null)}
+          >
+            <motion.section
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${selectedBrief.brief_name} details`}
+              className="w-full max-w-3xl overflow-hidden rounded-lg border border-[var(--line)] bg-white shadow-2xl"
+              initial={{ y: 18, scale: 0.98 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: 12, scale: 0.98 }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] bg-[var(--panel-soft)] px-5 py-4">
+                <div>
+                  <p className="text-[11px] font-bold uppercase text-[var(--faint)]">{selectedBrief.brand_name}</p>
+                  <h2 className="mt-1 text-[20px] font-bold text-[var(--ink)]">{selectedBrief.brief_name}</h2>
+                  <p className="mt-1 font-mono text-[11px] text-[var(--faint)]">{selectedBrief.brief_id}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBrief(null)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--line)] bg-white text-[var(--muted)] hover:text-[var(--ink)]"
+                  aria-label="Close brief details"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <MetricMini label="Status" value={selectedBrief.status.replace("_", " ")} />
+                  <MetricMini label="Budget" value={optionalMoney(selectedBrief.budget)} />
+                  <MetricMini label="Concepts" value={selectedBrief.concepts_count?.toString() ?? "N/A"} />
+                  <MetricMini label="Creatives" value={selectedBrief.creatives_count?.toString() ?? "N/A"} />
+                </div>
+                <div className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                  <div className="rounded-md border border-[var(--line)] bg-white p-4">
+                    <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Campaign objective</p>
+                    <p className="mt-2 text-[14px] leading-6 text-[var(--ink)]">{selectedBrief.campaign_objective}</p>
+                  </div>
+                  <div className="rounded-md border border-[var(--line)] bg-white p-4">
+                    <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Target audience</p>
+                    <p className="mt-2 text-[13px] leading-6 text-[var(--muted)]">{selectedBrief.target_audience_description ?? "N/A"}</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <MetricMini label="Owner" value={selectedBrief.owner ?? "N/A"} />
+                  <MetricMini label="Created" value={selectedBrief.created_ts ?? "N/A"} />
+                  <MetricMini label="Brand" value={selectedBrief.brand_name} />
+                </div>
+              </div>
+            </motion.section>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
 
 function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelStatus: ModelStatus }) {
   const [type, setType] = useState("all");
+  const [selectedAudienceId, setSelectedAudienceId] = useState(audiences[0]?.cohort_id ?? "");
   const filtered = audiences
     .filter((audience) => type === "all" || audience.definition_type === type)
     .sort((a, b) => b.estimated_reach - a.estimated_reach);
-  const chartData = filtered.map((audience) => ({
-    name: audience.cohort_name,
-    label: audienceChartLabel(audience.cohort_name),
-    reach: audience.estimated_reach,
-    match: audienceMatchPercent(audience),
-  }));
+  const selectedAudience = filtered.find((audience) => audience.cohort_id === selectedAudienceId) ?? filtered[0];
+  const selectedMatch = selectedAudience ? audienceMatchPercent(selectedAudience) : null;
+  const audienceChartRows = filtered.slice(0, 14);
+  const chartData = audienceChartRows.map((audience) => {
+    const match = audienceMatchPercent(audience);
+    const rank = audienceChartRows.indexOf(audience) + 1;
+    return {
+      rank,
+      rankLabel: `#${rank}`,
+      name: audience.cohort_name,
+      label: audienceChartLabel(audience.cohort_name),
+      reach: audience.estimated_reach,
+      match,
+      matchLabel: `${match}%`,
+    };
+  });
 
   return (
     <div className="space-y-5">
@@ -1418,75 +2003,932 @@ function Audiences({ audiences, modelStatus }: { audiences: Audience[]; modelSta
       />
       <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
         <Panel>
-          <SectionHeader title="Reach and match rate" eyebrow="C360 audience inventory" />
-          <div className="h-[360px] p-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ left: 0, right: 10, top: 8, bottom: 12 }}>
-                <CartesianGrid stroke="#e6ebf1" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  interval={0}
-                  height={58}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={12}
-                  tick={{ fontSize: 11, fill: "#626a78" }}
-                />
-                <YAxis
-                  yAxisId="reach"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12, fill: "#626a78" }}
-                  tickFormatter={formatCompact}
-                />
-                <YAxis
-                  yAxisId="match"
-                  orientation="right"
-                  domain={[0, 100]}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 12, fill: "#626a78" }}
-                  tickFormatter={(value) => `${value}%`}
-                />
-                <Tooltip
-                  labelFormatter={(_, payload) => payload?.[0]?.payload?.name ?? ""}
-                  formatter={(value, name) => {
-                    if (name === "reach") return [formatNumber(Number(value)), "Reach"];
-                    if (name === "match") return [value === null ? "N/A" : `${value}%`, "Match rate"];
-                    return [value, name];
-                  }}
-                />
-                <Legend verticalAlign="top" height={30} />
-                <Bar yAxisId="reach" dataKey="reach" name="Reach" fill="#0f9f95" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="match" type="monotone" dataKey="match" name="Match rate" stroke="#c7793a" strokeWidth={3} />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <SectionHeader
+            title="Reach and match rate"
+            eyebrow="C360 audience inventory"
+            action={
+              filtered.length > chartData.length ? (
+                <span className="rounded-md bg-[var(--panel-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">
+                  Top {chartData.length} by reach
+                </span>
+              ) : null
+            }
+          />
+          <div className="grid gap-4 p-4 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="h-[360px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} layout="vertical" margin={{ left: 6, right: 18, top: 16, bottom: 6 }} barCategoryGap={8}>
+                  <CartesianGrid stroke="#e6ebf1" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11, fill: "#626a78" }}
+                    tickFormatter={formatCompact}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="rankLabel"
+                    width={38}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11, fill: "#626a78", fontWeight: 700 }}
+                  />
+                  <Tooltip
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.name ?? ""}
+                    formatter={(value, name) => {
+                      if (name === "Reach") return [formatNumber(Number(value)), "Reach"];
+                      return [value, name];
+                    }}
+                  />
+                  <Bar dataKey="reach" name="Reach" fill="#0f9f95" radius={[0, 5, 5, 0]} barSize={18} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="max-h-[360px] overflow-y-auto rounded-md border border-[var(--line)] bg-white thin-scrollbar">
+              <table className="w-full min-w-[460px] text-left">
+                <thead className="sticky top-0 bg-[var(--panel-soft)] text-[10px] uppercase text-[var(--faint)]">
+                  <tr>
+                    <th className="px-3 py-2">Rank</th>
+                    <th className="px-3 py-2">Audience</th>
+                    <th className="px-3 py-2 text-right">Reach</th>
+                    <th className="px-3 py-2 text-right">Match</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--line)]">
+                  {chartData.map((item) => (
+                    <tr key={item.name}>
+                      <td className="px-3 py-2 font-mono text-[11px] font-bold text-[var(--faint)]">{item.rankLabel}</td>
+                      <td className="px-3 py-2">
+                        <p className="text-[12px] font-bold text-[var(--ink)]">{item.name}</p>
+                        <p className="mt-0.5 text-[10px] text-[var(--faint)]">{item.label}</p>
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-[12px] text-[var(--muted)]">{formatCompact(item.reach)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 font-mono text-[11px] font-bold text-amber-700">
+                          {item.matchLabel}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </Panel>
-        <div className="grid gap-3">
-          {filtered.map((audience) => {
-            const match = audienceMatchPercent(audience);
-            return (
-              <Panel key={audience.cohort_id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[14px] font-semibold">{audience.cohort_name}</p>
-                    <p className="mt-1 text-[12px] text-[var(--muted)]">{audience.cohort_description}</p>
+        <Panel className="p-4">
+          <SectionHeader
+            title="Audience picker"
+            eyebrow="Segment drilldown"
+            action={
+              <span className="rounded-md bg-[var(--panel-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">
+                {modelStatus.mode.replaceAll("_", " ")}
+              </span>
+            }
+          />
+          <label className="mt-4 grid gap-1 text-[12px] font-semibold text-[var(--muted)]">
+            Selected audience
+            <select
+              value={selectedAudience?.cohort_id ?? ""}
+              onChange={(event) => setSelectedAudienceId(event.target.value)}
+              className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[13px] text-[var(--ink)]"
+            >
+              {filtered.map((audience) => (
+                <option key={audience.cohort_id} value={audience.cohort_id}>{audience.cohort_name}</option>
+              ))}
+            </select>
+          </label>
+
+          {selectedAudience ? (
+            <div className="mt-4 rounded-md border border-[var(--line)] bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[16px] font-bold">{selectedAudience.cohort_name}</p>
+                  <p className="mt-2 text-[13px] leading-6 text-[var(--muted)]">{selectedAudience.cohort_description}</p>
+                </div>
+                <StatusPill value={selectedAudience.status} />
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-3">
+                <MetricMini label="Reach" value={formatCompact(selectedAudience.estimated_reach)} />
+                <MetricMini label="Match" value={selectedMatch === null ? "N/A" : `${selectedMatch}%`} />
+                <MetricMini label="LTV" value={optionalMoney(selectedAudience.avg_ltv)} />
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                <span className={`rounded-md border px-2 py-1 text-[11px] font-bold ${selectedAudience.is_region_allowed ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+                  Region {selectedAudience.is_region_allowed ? "allowed" : "blocked"}
+                </span>
+                <span className={`rounded-md border px-2 py-1 text-[11px] font-bold ${selectedAudience.is_channel_allowed ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+                  Channel {selectedAudience.is_channel_allowed ? "allowed" : "blocked"}
+                </span>
+                <span className={`rounded-md border px-2 py-1 text-[11px] font-bold ${selectedAudience.is_frequency_capped ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+                  {selectedAudience.is_frequency_capped ? "Frequency capped" : "No cap"}
+                </span>
+              </div>
+              <p className="mt-4 rounded-md bg-[var(--panel-soft)] px-3 py-2 text-[12px] leading-5 text-[var(--muted)]">
+                {selectedAudience.feature_summary_text ?? "No trait summary is available for this segment."}
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-md border border-dashed border-[var(--line)] bg-[var(--panel-soft)] p-4 text-[13px] text-[var(--muted)]">
+              No audience rows match the current filter.
+            </div>
+          )}
+
+          <div className="mt-4 grid gap-2">
+            {filtered
+              .filter((audience) => audience.cohort_id !== selectedAudience?.cohort_id)
+              .slice(0, 4)
+              .map((audience) => (
+                <button
+                  key={audience.cohort_id}
+                  type="button"
+                  onClick={() => setSelectedAudienceId(audience.cohort_id)}
+                  className="flex items-center justify-between gap-3 rounded-md border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-left transition-colors hover:bg-white"
+                >
+                  <span className="text-[12px] font-bold text-[var(--ink)]">{audience.cohort_name}</span>
+                  <span className="font-mono text-[11px] text-[var(--faint)]">{formatCompact(audience.estimated_reach)}</span>
+                </button>
+              ))}
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function parseJsonList(value: string | undefined) {
+  if (!value) return [] as string[];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+}
+
+function parseJsonObject(value: string | undefined) {
+  if (!value) return {} as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function CreativeStudio({ data }: { data: AgencyData }) {
+  const [briefId, setBriefId] = useState(data.briefs[0]?.brief_id ?? "");
+  const [cohortId, setCohortId] = useState(data.audiences[0]?.cohort_id ?? "");
+  const [placement, setPlacement] = useState("homepage_hero");
+  const [query, setQuery] = useState("");
+  const [selectedAssetType, setSelectedAssetType] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [instructions, setInstructions] = useState("Use audience traits to create a premium, placement-ready streaming creative.");
+  const [selectedAssetId, setSelectedAssetId] = useState(data.creativeAssets[0]?.asset_id ?? "");
+  const [generatedVariants, setGeneratedVariants] = useState<CreativeVariant[]>([]);
+  const [adaptedVariants, setAdaptedVariants] = useState<CreativeVariant[]>([]);
+  const [liveTransformations, setLiveTransformations] = useState<CreativeTransformation[]>([]);
+  const [adaptTargetPlacement, setAdaptTargetPlacement] = useState("story_unit");
+  const [selectedVariantId, setSelectedVariantId] = useState("");
+  const [selectedEditTypes, setSelectedEditTypes] = useState<string[]>([
+    "resize",
+    "aspect_ratio_conversion",
+    "text_safe_area_adjustment",
+    "cleanup",
+  ]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isAdapting, setIsAdapting] = useState(false);
+  const [approvalOverrides, setApprovalOverrides] = useState<Record<string, CreativeVariant>>({});
+  const [approvingId, setApprovingId] = useState("");
+  const [approvalMessage, setApprovalMessage] = useState("");
+  const [approvalError, setApprovalError] = useState("");
+  const [previewVariant, setPreviewVariant] = useState<CreativeVariant | null>(null);
+
+  const selectedBrief = data.briefs.find((brief) => brief.brief_id === briefId) ?? data.briefs[0];
+  const selectedAudience = data.audiences.find((audience) => audience.cohort_id === cohortId) ?? data.audiences[0];
+  const trait = data.audienceTraits.find((item) => item.cohort_id === cohortId);
+  const assetTypes = ["all", ...Array.from(new Set(data.creativeAssets.map((asset) => asset.asset_type.toLowerCase()).filter(Boolean)))];
+  const imageModelLabel = data.modelStatus.creative_image_model ?? "seeded synthetic image assets";
+
+  useEffect(() => {
+    if (!previewVariant) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setPreviewVariant(null);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewVariant]);
+
+  function assetMatchesPlacement(asset: CreativeAsset, targetPlacement: string) {
+    const normalizedPlacement = normalizeSearchText(targetPlacement);
+    if (!normalizedPlacement) return true;
+    const explicitPlacement = normalizeSearchText(asset.placement ?? "");
+    const searchablePlacement = normalizeSearchText(`${asset.content_tags} ${asset.approved_usage_contexts_json}`);
+    if (explicitPlacement) return explicitPlacement === normalizedPlacement;
+    return searchablePlacement.includes(normalizedPlacement) || searchablePlacement.includes("onsite personalization");
+  }
+
+  const categoryOptions = [
+    "all",
+    ...Array.from(
+      new Set(
+        data.creativeAssets
+          .filter((asset) => assetMatchesPlacement(asset, placement))
+          .map((asset) => asset.demo_category ?? labelize(asset.category_slug ?? ""))
+          .filter(Boolean),
+      ),
+    ),
+  ];
+  const activeAssets = data.creativeAssets.filter((asset) => {
+    const text = normalizeSearchText(`${asset.asset_name} ${asset.description} ${asset.content_tags} ${asset.approved_usage_contexts_json} ${asset.demo_category ?? ""} ${asset.category_slug ?? ""}`);
+    const normalizedQuery = normalizeSearchText(query);
+    const normalizedCategory = normalizeSearchText(selectedCategory);
+    const categoryText = normalizeSearchText(`${asset.demo_category ?? ""} ${asset.category_slug ?? ""} ${asset.asset_name}`);
+    const typeMatches = selectedAssetType === "all" || asset.asset_type.toLowerCase() === selectedAssetType;
+    const categoryMatches = selectedCategory === "all" || categoryText.includes(normalizedCategory);
+    return typeMatches && categoryMatches && (!normalizedQuery || text.includes(normalizedQuery)) && assetMatchesPlacement(asset, placement);
+  });
+  const selectedAsset = data.creativeAssets.find((asset) => asset.asset_id === selectedAssetId);
+  const activeAssetKey = activeAssets.map((asset) => asset.asset_id).join("|");
+
+  useEffect(() => {
+    setSelectedCategory("all");
+  }, [placement]);
+
+  useEffect(() => {
+    if (activeAssets.length && !activeAssets.some((asset) => asset.asset_id === selectedAssetId)) {
+      setSelectedAssetId(activeAssets[0].asset_id);
+    }
+  }, [activeAssetKey, selectedAssetId]);
+
+  const allVariants = [...adaptedVariants, ...generatedVariants, ...data.creativeVariants].map(
+    (variant) => approvalOverrides[variant.creative_asset_id] ?? variant,
+  );
+  const variants = allVariants.filter(
+    (variant) => (!cohortId || variant.cohort_id === cohortId) && (!placement || variant.placement === placement),
+  );
+  const shownVariants = variants.slice(0, 8);
+  const sourceVariant = allVariants.find((variant) => variant.creative_asset_id === selectedVariantId) ?? shownVariants[0] ?? allVariants[0];
+  const transformationLedger = [...liveTransformations, ...data.creativeTransformations]
+    .filter((item) => !sourceVariant || item.creative_asset_id === sourceVariant.creative_asset_id || item.input_asset_id === sourceVariant.creative_asset_id)
+    .slice(0, 12);
+
+  function toggleEditType(editType: string) {
+    setSelectedEditTypes((current) => {
+      if (current.includes(editType)) return current.filter((item) => item !== editType);
+      return [...current, editType];
+    });
+  }
+
+  async function generateVariants() {
+    setIsGenerating(true);
+    try {
+      const response = await fetch("/api/creative-generation/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brief_id: briefId,
+          cohort_id: cohortId,
+          placement,
+          category: selectedCategory === "all" ? selectedAsset?.demo_category ?? "" : selectedCategory,
+          content_type: "image",
+          user_instructions: instructions,
+          retrieval_query: query,
+          selected_base_asset_ids: selectedAssetId ? [selectedAssetId] : [],
+          requested_variant_count: 4,
+        }),
+      });
+      if (!response.ok) throw new Error("Generation request failed");
+      const payload = (await response.json()) as { variants: CreativeVariant[]; transformations?: CreativeTransformation[] };
+      setGeneratedVariants(payload.variants);
+      setLiveTransformations((current) => [...(payload.transformations ?? []), ...current]);
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  async function adaptVariant() {
+    if (!sourceVariant) return;
+    setIsAdapting(true);
+    try {
+      const response = await fetch(`/api/creative-variants/${sourceVariant.creative_asset_id}/adapt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          placement: adaptTargetPlacement,
+          transformation_type: selectedEditTypes[0] ?? "resize",
+          edit_types: selectedEditTypes.length ? selectedEditTypes : ["resize"],
+          output_format: "SVG",
+        }),
+      });
+      if (!response.ok) throw new Error("Adaptation request failed");
+      const payload = (await response.json()) as { variant: CreativeVariant; transformations: CreativeTransformation[] };
+      setAdaptedVariants((current) => [payload.variant, ...current.filter((item) => item.creative_asset_id !== payload.variant.creative_asset_id)]);
+      setLiveTransformations((current) => [...payload.transformations, ...current]);
+      setPlacement(adaptTargetPlacement);
+      setSelectedVariantId(payload.variant.creative_asset_id);
+    } finally {
+      setIsAdapting(false);
+    }
+  }
+
+  async function approveStudioVariant(variant: CreativeVariant) {
+    setApprovingId(variant.creative_asset_id);
+    setApprovalMessage("");
+    setApprovalError("");
+    try {
+      const response = await fetch(`/api/creative-variants/${variant.creative_asset_id}/approval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision: "Approved",
+          reviewer: "app_user",
+          review_notes: "Approved from Creative Studio pending-review slate.",
+          require_evaluation: false,
+          variant_snapshot: variant,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail?.message ?? payload.detail ?? "Approval failed");
+      setApprovalOverrides((current) => ({ ...current, [variant.creative_asset_id]: payload.variant }));
+      setApprovalMessage(`Approved: ${payload.variant.asset_name}`);
+    } catch (err) {
+      setApprovalError(err instanceof Error ? err.message : "Approval failed");
+    } finally {
+      setApprovingId("");
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <WorkSurface
+        title="Creative studio"
+        subtitle="Search governed assets, generate endpoint-backed variants, and adapt for onsite placements"
+        filters={["homepage_hero", "app_tile", "newsletter_banner", "social_square", "story_unit"]}
+        activeFilter={placement}
+        onFilter={setPlacement}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel className="p-5">
+          <SectionHeader title="Generation brief" eyebrow="Audience-driven creative" />
+          <div className="mt-4 grid gap-3">
+            <label className="grid gap-1 text-[12px] font-semibold text-[var(--muted)]">
+              Brief
+              <select value={briefId} onChange={(event) => setBriefId(event.target.value)} className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[13px] text-[var(--ink)]">
+                {data.briefs.map((brief) => (
+                  <option key={brief.brief_id} value={brief.brief_id}>{brief.brief_name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-[12px] font-semibold text-[var(--muted)]">
+              Audience segment
+              <select value={cohortId} onChange={(event) => setCohortId(event.target.value)} className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[13px] text-[var(--ink)]">
+                {data.audiences.map((audience) => (
+                  <option key={audience.cohort_id} value={audience.cohort_id}>{audience.cohort_name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-[12px] font-semibold text-[var(--muted)]">
+              Asset search
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search by category, asset name, placement, channel, or tag"
+                className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[13px] text-[var(--ink)]"
+              />
+            </label>
+            <label className="grid gap-1 text-[12px] font-semibold text-[var(--muted)]">
+              Text instructions
+              <textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} className="min-h-[96px] rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[13px] leading-5 text-[var(--ink)]" />
+            </label>
+            <button
+              type="button"
+              onClick={generateVariants}
+              disabled={isGenerating}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-[var(--brand-primary)] px-4 py-2 text-[13px] font-bold text-white shadow-lg shadow-sky-900/15 disabled:opacity-60"
+            >
+              <Sparkles size={16} />
+              {isGenerating ? "Generating" : "Generate 4 Variants"}
+            </button>
+          </div>
+          <div className="mt-4 rounded-md border border-[var(--line)] bg-[var(--panel-soft)] p-3">
+            <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Trait influence</p>
+            <p className="mt-2 text-[13px] leading-5 text-[var(--muted)]">{trait?.creative_implications_text ?? selectedAudience?.feature_summary_text ?? "Audience traits will guide tone, offer, and placement."}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {parseJsonList(trait?.topic_affinity_json).map((item) => (
+                <span key={item} className="rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">{item}</span>
+              ))}
+              {trait ? <span className="rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">tone: {trait.preferred_tone}</span> : null}
+              {trait ? <span className="rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">stage: {trait.lifecycle_stage}</span> : null}
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 rounded-md border border-[var(--line)] bg-white p-3 sm:grid-cols-2">
+            <MetricMini label="Creative endpoint" value={data.modelStatus.creative_model_endpoint ?? data.modelStatus.configured_endpoint ?? "N/A"} />
+            <MetricMini label="Image model/source" value={imageModelLabel} />
+          </div>
+        </Panel>
+
+        <Panel className="p-5">
+          <SectionHeader title="Governed asset retrieval" eyebrow="Approved base assets" />
+          <div className="mt-4 grid gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                {assetTypes.map((assetType) => (
+                  <button
+                    key={assetType}
+                    type="button"
+                    onClick={() => setSelectedAssetType(assetType)}
+                    className={`rounded-md border px-3 py-1.5 text-[12px] font-bold capitalize transition-colors ${selectedAssetType === assetType ? "border-[var(--brand-accent)] bg-[var(--panel-soft)] text-[var(--ink)]" : "border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)]/65"}`}
+                  >
+                    {labelize(assetType)}
+                  </button>
+                ))}
+              </div>
+              <span className="font-mono text-[11px] text-[var(--faint)]">{activeAssets.length} assets</span>
+            </div>
+            <div className="rounded-md border border-[var(--line)] bg-white p-2">
+              <div className="mb-2 flex items-center gap-2 px-1 text-[10px] font-bold uppercase text-[var(--faint)]">
+                <Filter size={12} />
+                Category
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {categoryOptions.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setSelectedCategory(category)}
+                    className={`rounded-md border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${selectedCategory === category ? "border-[var(--brand-accent)] bg-[var(--panel-soft)] text-[var(--ink)]" : "border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)]/65"}`}
+                  >
+                    {category === "all" ? "All categories" : category}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 max-h-[460px] overflow-y-auto pr-2 thin-scrollbar">
+            <div className="grid gap-3 md:grid-cols-2">
+              {activeAssets.map((asset) => (
+                <button
+                  key={asset.asset_id}
+                  type="button"
+                  onClick={() => setSelectedAssetId(asset.asset_id)}
+                  className={`overflow-hidden rounded-lg border text-left transition-colors ${selectedAssetId === asset.asset_id ? "border-[var(--brand-accent)] bg-[var(--panel-soft)]" : "border-[var(--line)] bg-white hover:bg-[var(--panel-soft)]/65"}`}
+                >
+                  <img src={`/api/creative-assets/${asset.asset_id}/thumbnail`} alt="" className="h-32 w-full bg-[var(--panel-soft)] object-contain" />
+                  <div className="p-3">
+                    <p className="text-[10px] font-bold uppercase text-[var(--faint)]">{asset.demo_category ?? labelize(asset.category_slug ?? asset.asset_type)}</p>
+                    <p className="text-[13px] font-bold text-[var(--ink)]">{asset.asset_name}</p>
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-[var(--muted)]">{asset.recommended_usage ?? asset.description}</p>
+                    <div className="mt-3 flex items-center justify-between text-[11px]">
+                      <span className="font-mono text-[var(--faint)]">{asset.aspect_ratio} / {labelize(asset.placement ?? "asset")}</span>
+                      <span className="font-semibold text-[var(--green)]">rights {asset.brand_safety_score}</span>
+                    </div>
                   </div>
-                  <span className="rounded-md bg-[var(--panel-soft)] px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">
-                    {audience.definition_type.replace("_", " ")}
-                  </span>
+                </button>
+              ))}
+              {activeAssets.length === 0 ? (
+                <div className="md:col-span-2 rounded-md border border-dashed border-[var(--line)] bg-[var(--panel-soft)] p-4 text-[13px] leading-5 text-[var(--muted)]">
+                  No approved base assets match the current placement, asset type, and search term.
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-3">
-                  <MetricMini label="Reach" value={formatCompact(audience.estimated_reach)} />
-                  <MetricMini label="Match" value={match === null ? "N/A" : `${match}%`} />
-                  <MetricMini label="LTV" value={optionalMoney(audience.avg_ltv)} />
+              ) : null}
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel className="p-5">
+        <SectionHeader title="Generated variant slate" eyebrow={`${selectedBrief?.brief_name ?? "Brief"} / ${selectedAudience?.cohort_name ?? "Audience"}`} />
+        {approvalMessage ? <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[13px] font-semibold text-[var(--green)]">{approvalMessage}</div> : null}
+        {approvalError ? <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] font-semibold text-[var(--red)]">{approvalError}</div> : null}
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {shownVariants.map((variant) => {
+            const readiness = variantReadinessChecks(
+              variant,
+              data.policyChecks.filter((check) => check.creative_asset_id === variant.creative_asset_id),
+            );
+            const generationParams = parseJsonObject(variant.generation_params_json);
+            const referenceName = variant.reference_asset_name ?? String(generationParams.reference_asset_name ?? variant.source_asset_id);
+            const retrievalSource = String(generationParams.retrieval_source ?? "");
+            return (
+            <article
+              key={variant.creative_asset_id}
+              className={`overflow-hidden rounded-lg border bg-white ${sourceVariant?.creative_asset_id === variant.creative_asset_id ? "border-[var(--brand-accent)]" : "border-[var(--line)]"}`}
+            >
+              <button
+                type="button"
+                onClick={() => setPreviewVariant(variant)}
+                className="group relative block h-40 w-full overflow-hidden bg-[var(--panel-soft)] text-left"
+                aria-label={`Open full preview for ${variant.asset_name}`}
+              >
+                <img src={`/api/creative-assets/${variant.creative_asset_id}/thumbnail`} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
+                <span className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/90 text-[var(--ink)] shadow-sm opacity-0 transition-opacity group-hover:opacity-100" title="Open full preview">
+                  <Maximize2 size={16} />
+                </span>
+              </button>
+              <div className="p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <StatusPill value={variant.approval_status} />
+                  <span className="font-mono text-[11px] text-[var(--faint)]">{variant.width_px}x{variant.height_px}</span>
                 </div>
-              </Panel>
+                <p className="text-[13px] font-bold">{variant.asset_name}</p>
+                <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-[var(--brand-primary)]">Reference: {referenceName}</p>
+                <p className="mt-2 text-[12px] leading-5 text-[var(--muted)]">{variant.adaptation_summary}</p>
+                {retrievalSource ? (
+                  <p className="mt-2 rounded-md bg-[var(--panel-soft)] px-2 py-1 font-mono text-[10px] font-semibold text-[var(--faint)]">RAG: {retrievalSource}</p>
+                ) : null}
+                <div className="mt-3 grid grid-cols-2 gap-1.5">
+                  {readiness.map((check) => (
+                    <span key={check.label} className={`rounded-md border px-2 py-1 text-[10px] font-bold uppercase ${readinessChipClass(check.status)}`}>
+                      {check.label}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-3 flex items-center justify-between text-[12px]">
+                  <span className="font-semibold text-[var(--brand-primary)]">{variant.generation_model}</span>
+                  <span className="font-mono text-[var(--muted)]">{variant.predicted_ctr?.toFixed(2) ?? "N/A"} CTR</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedVariantId(variant.creative_asset_id)}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-[12px] font-bold text-[var(--ink)] transition-colors hover:bg-white"
+                >
+                  <Maximize2 size={14} />
+                  Use for adaptation
+                </button>
+                {variant.approval_status === "Pending_Review" ? (
+                  <button
+                    type="button"
+                    onClick={() => approveStudioVariant(variant)}
+                    disabled={approvingId === variant.creative_asset_id}
+                    className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--brand-primary)] px-3 py-2 text-[12px] font-bold text-white disabled:bg-slate-300"
+                  >
+                    <ShieldCheck size={14} />
+                    {approvingId === variant.creative_asset_id ? "Approving" : "Approve"}
+                  </button>
+                ) : null}
+              </div>
+            </article>
             );
           })}
         </div>
+      </Panel>
+
+      {previewVariant ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071523]/82 p-4">
+          <button type="button" className="absolute inset-0 cursor-default" onClick={() => setPreviewVariant(null)} aria-label="Close full image preview" />
+          <div className="relative z-10 w-full max-w-6xl overflow-hidden rounded-lg bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-4 border-b border-[var(--line)] px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-bold text-[var(--ink)]">{previewVariant.asset_name}</p>
+                <p className="font-mono text-[11px] text-[var(--faint)]">{previewVariant.width_px}x{previewVariant.height_px} / {labelize(previewVariant.placement)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewVariant(null)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--line)] bg-white text-[var(--muted)] hover:text-[var(--ink)]"
+                aria-label="Close full image preview"
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="bg-[#101820] p-3 sm:p-4">
+              <img
+                src={`/api/creative-assets/${previewVariant.creative_asset_id}/thumbnail`}
+                alt={`${previewVariant.asset_name} full preview`}
+                className="mx-auto max-h-[74vh] w-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel className="p-5">
+          <SectionHeader title="Modification and adaptation" eyebrow="Placement reformatting" />
+          <div className="mt-4 grid gap-4">
+            <label className="grid gap-1 text-[12px] font-semibold text-[var(--muted)]">
+              Source creative
+              <select
+                value={sourceVariant?.creative_asset_id ?? ""}
+                onChange={(event) => setSelectedVariantId(event.target.value)}
+                className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[13px] text-[var(--ink)]"
+              >
+                {allVariants.slice(0, 24).map((variant) => (
+                  <option key={variant.creative_asset_id} value={variant.creative_asset_id}>
+                    {variant.asset_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div>
+              <p className="text-[12px] font-semibold text-[var(--muted)]">Target placement</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {PLACEMENT_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setAdaptTargetPlacement(option)}
+                    className={`rounded-md border px-3 py-2 text-left transition-colors ${adaptTargetPlacement === option ? "border-[var(--brand-accent)] bg-[var(--panel-soft)]" : "border-[var(--line)] bg-white hover:bg-[var(--panel-soft)]/65"}`}
+                  >
+                    <span className="block text-[12px] font-bold text-[var(--ink)]">{labelize(option)}</span>
+                    <span className="font-mono text-[11px] text-[var(--faint)]">{PLACEMENT_DIMENSIONS[option]}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[12px] font-semibold text-[var(--muted)]">Image edits to track</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {EDIT_OPERATION_OPTIONS.map((editType) => (
+                  <label key={editType} className="flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-semibold text-[var(--ink)]">
+                    <input type="checkbox" checked={selectedEditTypes.includes(editType)} onChange={() => toggleEditType(editType)} />
+                    <span>{labelize(editType)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={adaptVariant}
+              disabled={isAdapting || !sourceVariant}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-[var(--brand-primary)] px-4 py-2 text-[13px] font-bold text-white shadow-lg shadow-sky-900/15 disabled:opacity-60"
+            >
+              <Wand2 size={16} />
+              {isAdapting ? "Adapting" : "Create Adaptation"}
+            </button>
+          </div>
+        </Panel>
+
+        <Panel className="p-5">
+          <SectionHeader title="Transformation ledger" eyebrow="Lineage-ready edit steps" />
+          <div className="mt-4 overflow-hidden rounded-md border border-[var(--line)]">
+            <table className="min-w-full divide-y divide-[var(--line)] text-left">
+              <thead className="bg-[var(--panel-soft)] text-[11px] uppercase text-[var(--faint)]">
+                <tr>
+                  <th className="px-3 py-2">Step</th>
+                  <th className="px-3 py-2">Edit</th>
+                  <th className="px-3 py-2">Placement</th>
+                  <th className="px-3 py-2">Output</th>
+                  <th className="px-3 py-2">Goal</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--line)] bg-white">
+                {transformationLedger.map((item) => (
+                  <tr key={item.transformation_id}>
+                    <td className="px-3 py-3 font-mono text-[12px] text-[var(--faint)]">{item.edit_sequence}</td>
+                    <td className="px-3 py-3 text-[12px] font-bold text-[var(--ink)]">{item.edit_label || labelize(item.transformation_type)}</td>
+                    <td className="px-3 py-3 text-[12px] text-[var(--muted)]">{labelize(item.placement)}</td>
+                    <td className="px-3 py-3 font-mono text-[12px] text-[var(--muted)]">{item.output_width_px}x{item.output_height_px}</td>
+                    <td className="px-3 py-3 text-[12px] leading-5 text-[var(--muted)]">{item.edit_goal}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
       </div>
+    </div>
+  );
+}
+
+function Evaluation({
+  data,
+  onActivationSubmitted,
+}: {
+  data: AgencyData;
+  onActivationSubmitted: (activation: Activation, exportRecord: ActivationExport) => void;
+}) {
+  const [activationMessage, setActivationMessage] = useState("");
+  const [activationError, setActivationError] = useState("");
+  const [multiChannel, setMultiChannel] = useState(false);
+  const [channelSelections, setChannelSelections] = useState<Record<string, string[]>>({});
+  const [activatingId, setActivatingId] = useState("");
+  const approvedVariantIds = new Set(
+    data.creativeVariants
+      .filter((variant) => variant.approval_status === "Approved")
+      .map((variant) => variant.creative_asset_id),
+  );
+  const judgeEndpoint = data.modelStatus.judge_model_endpoint ?? data.syntheticEvaluations[0]?.judge_model ?? "databricks-gpt-5-mini";
+  const ranked = data.syntheticEvaluations.filter((evaluation) => approvedVariantIds.has(evaluation.creative_asset_id)).sort((a, b) => {
+    if (a.rank_within_segment_placement !== b.rank_within_segment_placement) return a.rank_within_segment_placement - b.rank_within_segment_placement;
+    return b.overall_score - a.overall_score;
+  });
+  const topRows = ranked.slice(0, 10);
+  const readyActivationIds = new Set(data.activationExports.map((exportRecord) => exportRecord.export_id));
+  data.activations
+    .filter((activation) => activation.activation_source === "live_submission")
+    .forEach((activation) => readyActivationIds.add(activation.export_id ?? activation.activation_id));
+
+  function variantFor(id: string) {
+    return data.creativeVariants.find((variant) => variant.creative_asset_id === id);
+  }
+
+  function checksFor(id: string) {
+    return data.policyChecks.filter((check) => check.creative_asset_id === id);
+  }
+
+  function selectedChannelsFor(evaluation: SyntheticEvaluation) {
+    const recommended = recommendedChannelFor(evaluation).channel.id;
+    const selected = channelSelections[evaluation.evaluation_id];
+    if (multiChannel) return selected?.length ? selected : [recommended];
+    return [selected?.[0] ?? recommended];
+  }
+
+  function setSingleChannel(evaluationId: string, channelId: string) {
+    setChannelSelections((current) => ({ ...current, [evaluationId]: [channelId] }));
+  }
+
+  function toggleChannel(evaluation: SyntheticEvaluation, channelId: string) {
+    const recommended = recommendedChannelFor(evaluation).channel.id;
+    setChannelSelections((current) => {
+      const currentChannels = current[evaluation.evaluation_id] ?? [recommended];
+      const next = currentChannels.includes(channelId)
+        ? currentChannels.filter((item) => item !== channelId)
+        : [...currentChannels, channelId];
+      return { ...current, [evaluation.evaluation_id]: next.length ? next : [recommended] };
+    });
+  }
+
+  async function activateVariant(evaluation: SyntheticEvaluation) {
+    const variant = variantFor(evaluation.creative_asset_id);
+    const channelIds = selectedChannelsFor(evaluation);
+    setActivatingId(evaluation.evaluation_id);
+    setActivationMessage("");
+    setActivationError("");
+    try {
+      const submittedChannels: string[] = [];
+      for (const channelId of channelIds) {
+        const channel = ACTIVATION_CHANNELS.find((item) => item.id === channelId) ?? ACTIVATION_CHANNELS[0];
+        const response = await fetch("/api/activation-exports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            creative_asset_id: evaluation.creative_asset_id,
+            cohort_id: evaluation.cohort_id,
+            placement: evaluation.placement,
+            destination_system: channel.label,
+          }),
+        });
+        const payload = (await response.json()) as ActivationSubmitResponse;
+        if (!response.ok) throw new Error(payload.export?.error_message || "Activation failed");
+        onActivationSubmitted(payload.activation, payload.export);
+        submittedChannels.push(channel.label);
+      }
+      setActivationMessage(`Activated ${variant?.asset_name ?? evaluation.creative_asset_id} for ${submittedChannels.join(", ")}.`);
+    } catch (err) {
+      setActivationError(err instanceof Error ? err.message : "Activation failed");
+    } finally {
+      setActivatingId("");
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <WorkSurface
+        title="Evaluation gate"
+        subtitle="Synthetic audience response, policy checks, and channel activation readiness"
+        filters={["policy", "rights", "synthetic audience", "activate"]}
+        activeFilter="synthetic audience"
+        onFilter={() => undefined}
+      />
+      <div className="grid gap-4 md:grid-cols-4">
+        <KpiCard label="Approved Scored" value={`${ranked.length}`} detail="approved synthetic rows" icon={ShieldCheck} tone="#5b65d8" />
+        <KpiCard label="Policy Checks" value={`${data.policyChecks.length}`} detail="brand, rights, regional, safety" icon={Filter} tone="#c7793a" />
+        <KpiCard label="Ready to Activate" value={`${readyActivationIds.size}`} detail="submitted or payload-ready" icon={Send} tone="#1f9d72" />
+        <KpiCard label="Judge Model" value="Databricks" detail={judgeEndpoint} icon={Bot} tone="#256b8f" />
+      </div>
+
+      {activationMessage ? <Panel className="p-4 text-[13px] font-semibold text-[var(--green)]">{activationMessage}</Panel> : null}
+      {activationError ? <Panel className="p-4 text-[13px] font-semibold text-[var(--red)]">{activationError}</Panel> : null}
+
+      <Panel>
+        <SectionHeader
+          title="Channel-by-variant matrix"
+          eyebrow="Recommended channel can be overwritten"
+          action={
+            <label className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-bold text-[var(--ink)]">
+              <input type="checkbox" checked={multiChannel} onChange={(event) => setMultiChannel(event.target.checked)} />
+              Multi-channel submit
+            </label>
+          }
+        />
+        <div className="overflow-x-auto thin-scrollbar">
+          <table className="w-full min-w-[1440px] text-left">
+            <thead className="bg-[var(--panel-soft)] text-[11px] uppercase text-[var(--muted)]">
+              <tr>
+                <th className="px-4 py-3">Variant</th>
+                <th className="px-4 py-3">Placement</th>
+                <th className="px-4 py-3 text-right">Overall</th>
+                {ACTIVATION_CHANNELS.map((channel) => (
+                  <th key={channel.id} className="px-3 py-3 text-center">{channel.label}</th>
+                ))}
+                <th className="px-4 py-3">Selection</th>
+                <th className="px-4 py-3">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--line)]">
+              {topRows.map((evaluation) => {
+                const variant = variantFor(evaluation.creative_asset_id);
+                const checks = checksFor(evaluation.creative_asset_id);
+                const readiness = variant ? variantReadinessChecks(variant, checks) : [];
+                const blocked = readiness.some((check) => check.status === "block") || checks.some((check) => ["fail", "failed", "block", "blocked"].includes(check.check_status.toLowerCase()));
+                const approved = variant?.approval_status === "Approved";
+                const recommended = recommendedChannelFor(evaluation);
+                const selectedChannels = selectedChannelsFor(evaluation);
+                return (
+                  <tr key={evaluation.evaluation_id} className="align-top hover:bg-[var(--panel-soft)]/70">
+                    <td className="px-4 py-4">
+                      <p className="text-[13px] font-bold">{variant?.asset_name ?? evaluation.creative_asset_id}</p>
+                      <p className="font-mono text-[11px] text-[var(--faint)]">{evaluation.creative_asset_id}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {variant ? <StatusPill value={variant.approval_status} /> : null}
+                        {readiness.slice(0, 4).map((check) => (
+                          <span key={check.label} className={`rounded-md border px-2 py-1 text-[10px] font-bold uppercase ${readinessChipClass(check.status)}`}>
+                            {check.label}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 text-[13px] capitalize">{labelize(evaluation.placement)}</td>
+                    <td className="px-4 py-4 text-right font-mono text-[13px]">
+                      <span className="block text-[16px] font-bold">{evaluation.overall_score}</span>
+                      <span className="text-[11px] text-[var(--faint)]">rank #{evaluation.rank_within_segment_placement}</span>
+                    </td>
+                    {ACTIVATION_CHANNELS.map((channel) => {
+                      const projection = channelProjectionFor(evaluation, channel);
+                      const isRecommended = channel.id === recommended.channel.id;
+                      return (
+                        <td key={channel.id} className="px-2 py-4">
+                          <div className={`min-h-[92px] rounded-md border p-2 text-center ${channelScoreClass(projection.score)}`}>
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="font-mono text-[16px] font-bold">{projection.score}</span>
+                              {isRecommended ? <span className="rounded bg-white/80 px-1.5 py-0.5 text-[9px] font-bold uppercase">Rec</span> : null}
+                            </div>
+                            <p className="mt-1 font-mono text-[11px]">{projection.projectedCtr.toFixed(2)}% CTR</p>
+                            <p className="font-mono text-[11px]">{formatMoney(projection.projectedCpm)} CPM</p>
+                            <p className="font-mono text-[10px] text-current/70">{formatNumber(projection.projectedConversions)} starts</p>
+                          </div>
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-4">
+                      {multiChannel ? (
+                        <div className="grid gap-1.5">
+                          {ACTIVATION_CHANNELS.map((channel) => (
+                            <label key={channel.id} className="inline-flex items-center gap-2 text-[12px] font-semibold text-[var(--muted)]">
+                              <input
+                                type="checkbox"
+                                checked={selectedChannels.includes(channel.id)}
+                                onChange={() => toggleChannel(evaluation, channel.id)}
+                              />
+                              {channel.label}
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <select
+                          value={selectedChannels[0]}
+                          onChange={(event) => setSingleChannel(evaluation.evaluation_id, event.target.value)}
+                          className="w-full rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-semibold text-[var(--ink)]"
+                        >
+                          {ACTIVATION_CHANNELS.map((channel) => (
+                            <option key={channel.id} value={channel.id}>{channel.label}</option>
+                          ))}
+                        </select>
+                      )}
+                      <p className="mt-2 text-[11px] leading-4 text-[var(--faint)]">Recommended: {recommended.channel.label}</p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <button
+                        type="button"
+                        disabled={blocked || !approved || activatingId === evaluation.evaluation_id}
+                        onClick={() => activateVariant(evaluation)}
+                        className="inline-flex items-center gap-2 rounded-md bg-[var(--brand-primary)] px-3 py-2 text-[12px] font-bold text-white disabled:bg-slate-200 disabled:text-slate-500"
+                      >
+                        <Send size={14} />
+                        {activatingId === evaluation.evaluation_id ? "Activating" : "Activate"}
+                      </button>
+                      {blocked ? <p className="mt-2 text-[11px] font-semibold text-[var(--red)]">Blocked by checks</p> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+              {topRows.length === 0 ? (
+                <tr>
+                  <td colSpan={ACTIVATION_CHANNELS.length + 5} className="px-4 py-6 text-center text-[13px] text-[var(--muted)]">
+                    No approved variants have synthetic evaluation rows yet.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   );
 }
@@ -1567,28 +3009,117 @@ function Creatives({ creatives }: { creatives: Creative[] }) {
   );
 }
 
-function Activations({ activations }: { activations: Activation[] }) {
+function Activations({ activations, newSubmissions }: { activations: Activation[]; newSubmissions: Activation[] }) {
   const [platform, setPlatform] = useState("all");
-  const platforms = Array.from(new Set(activations.map((item) => item.destination_platform)));
-  const filtered = activations.filter((activation) => platform === "all" || activation.destination_platform === platform);
-  const totalSpend = filtered.reduce((sum, item) => sum + item.cost, 0);
+  const [lineage, setLineage] = useState<ActivationLineage | null>(null);
+  const [lineageLoadingId, setLineageLoadingId] = useState("");
+  const [lineageError, setLineageError] = useState("");
+  const submittedById = new Map<string, Activation>();
+  activations.filter((item) => item.activation_source === "live_submission").forEach((item) => submittedById.set(item.activation_id, item));
+  newSubmissions.forEach((item) => submittedById.set(item.activation_id, item));
+  const submitted = Array.from(submittedById.values()).sort((a, b) => b.last_sync_ts.localeCompare(a.last_sync_ts));
+  const submittedIds = new Set(submitted.map((item) => item.activation_id));
+  const campaignActivations = activations.filter((item) => item.activation_source !== "live_submission" && !submittedIds.has(item.activation_id));
+  const platforms = Array.from(new Set([...campaignActivations, ...submitted].map((item) => item.destination_platform).filter(Boolean)));
+  const filteredCampaigns = campaignActivations.filter((activation) => platform === "all" || activation.destination_platform === platform);
+  const filteredSubmissions = submitted.filter((activation) => platform === "all" || activation.destination_platform === platform);
+  const totalSpend = filteredCampaigns.reduce((sum, item) => sum + item.cost, 0);
   const platformData = platforms.map((name) => ({
     name,
-    spend: activations.filter((item) => item.destination_platform === name).reduce((sum, item) => sum + item.cost, 0),
+    spend: campaignActivations.filter((item) => item.destination_platform === name).reduce((sum, item) => sum + item.cost, 0),
   }));
+
+  useEffect(() => {
+    if (!lineage) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setLineage(null);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lineage]);
+
+  async function openActivationLineage(activation: Activation) {
+    setLineageLoadingId(activation.activation_id);
+    setLineageError("");
+    try {
+      const payload = await fetchJson<ActivationLineage>(`/api/activations/${encodeURIComponent(activation.activation_id)}/lineage`);
+      setLineage(payload);
+    } catch (err) {
+      setLineageError(err instanceof Error ? err.message : "Lineage lookup failed");
+    } finally {
+      setLineageLoadingId("");
+    }
+  }
 
   return (
     <div className="space-y-5">
       <WorkSurface
         title="Activation trafficking"
-        subtitle={`${formatMoney(totalSpend)} in focused spend`}
+        subtitle={`${formatMoney(totalSpend)} in focused spend / ${filteredSubmissions.length} new submissions`}
         filters={["all", ...platforms]}
         activeFilter={platform}
         onFilter={setPlatform}
       />
+
+      {lineageError ? <Panel className="p-4 text-[13px] font-semibold text-[var(--red)]">{lineageError}</Panel> : null}
+
+      <Panel>
+        <SectionHeader title="New submissions" eyebrow="Synthetic activations submitted from Evaluation" />
+        <div className="overflow-x-auto thin-scrollbar">
+          <table className="w-full min-w-[960px] text-left">
+            <thead className="bg-[var(--panel-soft)] text-[11px] uppercase text-[var(--muted)]">
+              <tr>
+                <th className="px-4 py-3">Submitted</th>
+                <th className="px-4 py-3">Channel</th>
+                <th className="px-4 py-3">Creative</th>
+                <th className="px-4 py-3">Placement</th>
+                <th className="px-4 py-3">Cohort</th>
+                <th className="px-4 py-3">Destination asset</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Lineage</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--line)]">
+              {filteredSubmissions.map((activation) => (
+                <tr key={activation.activation_id} className="hover:bg-[var(--panel-soft)]/70">
+                  <td className="px-4 py-4">
+                    <p className="text-[13px] font-semibold">{activation.activation_id}</p>
+                    <p className="font-mono text-[11px] text-[var(--faint)]">{activation.last_sync_ts}</p>
+                  </td>
+                  <td className="px-4 py-4 text-[13px]">{activation.destination_platform}</td>
+                  <td className="px-4 py-4 font-mono text-[11px] text-[var(--muted)]">{activation.creative_asset_id}</td>
+                  <td className="px-4 py-4 text-[13px] capitalize">{activation.placement ? labelize(activation.placement) : "N/A"}</td>
+                  <td className="px-4 py-4 font-mono text-[11px] text-[var(--muted)]">{activation.cohort_id ?? "N/A"}</td>
+                  <td className="px-4 py-4 font-mono text-[11px] text-[var(--muted)]">{activation.destination_asset_id ?? "N/A"}</td>
+                  <td className="px-4 py-4"><StatusPill value={activation.trafficking_status} /></td>
+                  <td className="px-4 py-4">
+                    <button
+                      type="button"
+                      onClick={() => openActivationLineage(activation)}
+                      disabled={lineageLoadingId === activation.activation_id}
+                      className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-bold text-[var(--ink)] hover:bg-[var(--panel-soft)] disabled:opacity-50"
+                    >
+                      <Layers3 size={14} />
+                      {lineageLoadingId === activation.activation_id ? "Tracing" : "Trace"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredSubmissions.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-6 text-center text-[13px] text-[var(--muted)]">
+                    Activate a recommended variant from the Evaluation gate to populate this queue.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         <Panel>
-          <SectionHeader title="Spend by platform" eyebrow="Media delivery" />
+          <SectionHeader title="Spend by platform" eyebrow="Measured media delivery" />
           <div className="h-[320px] p-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={platformData} layout="vertical" margin={{ left: 10, right: 18, top: 8, bottom: 0 }}>
@@ -1602,6 +3133,7 @@ function Activations({ activations }: { activations: Activation[] }) {
           </div>
         </Panel>
         <Panel>
+          <SectionHeader title="Live delivery metrics" eyebrow="Existing campaign activations" />
           <div className="overflow-x-auto thin-scrollbar">
             <table className="w-full min-w-[900px] text-left">
               <thead className="bg-[var(--panel-soft)] text-[11px] uppercase text-[var(--muted)]">
@@ -1614,10 +3146,11 @@ function Activations({ activations }: { activations: Activation[] }) {
                   <th className="px-4 py-3 text-right">Conversions</th>
                   <th className="px-4 py-3 text-right">Spend</th>
                   <th className="px-4 py-3">Synced</th>
+                  <th className="px-4 py-3">Lineage</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--line)]">
-                {filtered.map((activation) => (
+                {filteredCampaigns.map((activation) => (
                   <tr key={activation.activation_id} className="hover:bg-[var(--panel-soft)]/70">
                     <td className="px-4 py-4">
                       <p className="text-[13px] font-semibold">{activation.activation_id}</p>
@@ -1630,12 +3163,156 @@ function Activations({ activations }: { activations: Activation[] }) {
                     <td className="px-4 py-4 text-right font-mono text-[13px]">{formatNumber(activation.conversions)}</td>
                     <td className="px-4 py-4 text-right font-mono text-[13px]">{formatMoney(activation.cost)}</td>
                     <td className="px-4 py-4 font-mono text-[11px] text-[var(--muted)]">{activation.last_sync_ts}</td>
+                    <td className="px-4 py-4">
+                      <button
+                        type="button"
+                        onClick={() => openActivationLineage(activation)}
+                        disabled={lineageLoadingId === activation.activation_id}
+                        className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-bold text-[var(--ink)] hover:bg-[var(--panel-soft)] disabled:opacity-50"
+                      >
+                        <Layers3 size={14} />
+                        {lineageLoadingId === activation.activation_id ? "Tracing" : "Trace"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
+                {filteredCampaigns.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-6 text-center text-[13px] text-[var(--muted)]">
+                      No measured delivery rows match this platform filter.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
         </Panel>
+      </div>
+
+      {lineage ? <ActivationLineageModal lineage={lineage} onClose={() => setLineage(null)} /> : null}
+    </div>
+  );
+}
+
+function ActivationLineageModal({ lineage, onClose }: { lineage: ActivationLineage; onClose: () => void }) {
+  const primaryEntityTypes = ["activation", "activation_export", "creative_variant", "creative", "generation_request", "brief"];
+  const primarySteps = lineage.steps.filter((step) => primaryEntityTypes.includes(step.entity_type));
+  const supportSteps = lineage.steps.filter((step) => !primaryEntityTypes.includes(step.entity_type));
+  const policyIssues = lineage.policy_checks.filter((check) => check.check_status.toLowerCase() !== "pass" || check.review_required);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071523]/82 p-4">
+      <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close activation lineage" />
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-4 border-b border-[var(--line)] px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Activation lineage</p>
+            <h2 className="truncate text-[18px] font-bold text-[var(--ink)]">
+              {lineage.activation?.destination_platform ?? "Activation"} back to {lineage.brief?.brief_name ?? "original brief"}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--line)] bg-white text-[var(--muted)] hover:text-[var(--ink)]"
+            aria-label="Close activation lineage"
+            title="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="thin-scrollbar overflow-y-auto p-4">
+          <div className="grid gap-3 lg:grid-cols-5">
+            {primarySteps.map((step, index) => (
+              <div key={`${step.entity_type}-${step.entity_id}`} className="relative rounded-lg border border-[var(--line)] bg-white p-3">
+                {index < primarySteps.length - 1 ? (
+                  <div className="absolute -right-3 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-white text-[var(--muted)] lg:block">
+                    <ArrowRight size={18} />
+                  </div>
+                ) : null}
+                <p className="text-[10px] font-bold uppercase text-[var(--faint)]">{labelize(step.entity_type)}</p>
+                <p className="mt-1 text-[13px] font-bold text-[var(--ink)]">{step.title}</p>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-[var(--muted)]">{step.subtitle}</p>
+                {step.status ? <div className="mt-2"><StatusPill value={step.status} /></div> : null}
+                <p className="mt-2 font-mono text-[10px] text-[var(--faint)]">{step.entity_id}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-5">
+            {lineage.evidence.map((item) => (
+              <div key={item.label} className="rounded-md border border-[var(--line)] bg-[var(--panel-soft)] p-3">
+                <p className="text-[10px] font-bold uppercase text-[var(--faint)]">{item.label}</p>
+                <p className="mt-1 font-mono text-[16px] font-bold text-[var(--ink)]">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+              <p className="text-[13px] font-bold text-[var(--ink)]">Original brief trace</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {[...primarySteps, ...supportSteps].map((step) => (
+                  <div key={`detail-${step.entity_type}-${step.entity_id}`} className="rounded-md border border-[var(--line)] bg-[var(--panel-soft)]/55 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-bold uppercase text-[var(--faint)]">{labelize(step.entity_type)}</p>
+                        <p className="mt-1 text-[13px] font-bold text-[var(--ink)]">{step.title}</p>
+                      </div>
+                      {step.status ? <StatusPill value={step.status} /> : null}
+                    </div>
+                    <div className="mt-2 grid gap-1">
+                      {Object.entries(step.metadata).slice(0, 5).map(([key, value]) => (
+                        <div key={key} className="flex justify-between gap-3 text-[11px]">
+                          <span className="text-[var(--faint)]">{key}</span>
+                          <span className="max-w-[62%] truncate text-right font-mono text-[var(--muted)]">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+                <p className="text-[13px] font-bold text-[var(--ink)]">Governance evidence</p>
+                <div className="mt-3 space-y-2">
+                  {lineage.policy_checks.slice(0, 6).map((check) => (
+                    <div key={check.check_id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--line)] bg-[var(--panel-soft)]/55 px-3 py-2">
+                      <div>
+                        <p className="text-[12px] font-bold text-[var(--ink)]">{labelize(check.check_type)}</p>
+                        <p className="font-mono text-[10px] text-[var(--faint)]">{check.check_id}</p>
+                      </div>
+                      <span className={`rounded-md border px-2 py-1 text-[10px] font-bold uppercase ${readinessChipClass(policyIssues.includes(check) ? "warn" : "pass")}`}>
+                        {check.check_status}
+                      </span>
+                    </div>
+                  ))}
+                  {lineage.policy_checks.length === 0 ? <p className="text-[12px] text-[var(--muted)]">No policy checks were found for this creative.</p> : null}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+                <p className="text-[13px] font-bold text-[var(--ink)]">Transformations and evaluation</p>
+                <div className="mt-3 grid gap-2">
+                  {lineage.transformations.slice(0, 5).map((item) => (
+                    <div key={item.transformation_id} className="rounded-md bg-[var(--panel-soft)] px-3 py-2 text-[11px] text-[var(--muted)]">
+                      <span className="font-bold text-[var(--ink)]">{item.edit_label || labelize(item.transformation_type)}</span> · {item.edit_goal}
+                    </div>
+                  ))}
+                  {lineage.synthetic_evaluations.slice(0, 3).map((evaluation) => (
+                    <div key={evaluation.evaluation_id} className="rounded-md bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                      Synthetic score {evaluation.overall_score}; rank #{evaluation.rank_within_segment_placement} for {labelize(evaluation.placement)}
+                    </div>
+                  ))}
+                  {lineage.transformations.length === 0 && lineage.synthetic_evaluations.length === 0 ? (
+                    <p className="text-[12px] text-[var(--muted)]">No transformation or evaluation records were found for this activation.</p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1816,44 +3493,54 @@ function Markets({ markets }: { markets: MarketRegion[] }) {
 function TalkTrack({ data }: { data: AgencyData }) {
   const loadedTables = data.backendTables.tables.filter((table) => table.loaded);
   const totalRows = data.backendTables.tables.reduce((sum, table) => sum + table.rows, 0);
-  const audienceTable = data.backendTables.tables.find((table) => table.name === "audiences");
+  const creativeEndpoint = data.modelStatus.creative_model_endpoint ?? data.modelStatus.configured_endpoint ?? "databricks-gpt-5-mini";
+  const imageModel = data.modelStatus.creative_image_model ?? "seeded synthetic image assets";
+  const policyEndpoint = data.modelStatus.policy_model_endpoint ?? creativeEndpoint;
+  const judgeEndpoint = data.modelStatus.judge_model_endpoint ?? creativeEndpoint;
+  const modelMode = data.modelStatus.creative_generation_mode ?? "model_endpoint";
+  const baseAssetTable = data.backendTables.tables.find((table) => table.name === "base_creative_assets");
+  const variantTable = data.backendTables.tables.find((table) => table.name === "creative_variants");
+  const evaluationTable = data.backendTables.tables.find((table) => table.name === "synthetic_audience_evaluations");
+  const approvedBaseAssets = data.creativeAssets.filter((asset) => asset.status === "active").length;
+  const pendingVariants = data.creativeVariants.filter((variant) => variant.approval_status === "Pending_Review").length;
+  const approvedVariants = data.creativeVariants.filter((variant) => variant.approval_status === "Approved").length;
   const storyCards = [
     {
-      title: "Stay inside the app",
-      text: "Use this tab as the customer-facing talk track so the demo does not have to jump to a separate architecture diagram.",
+      title: "Lead with the workflow",
+      text: "Frame the demo as a closed loop: brief detail, C360 traits, governed seed-image retrieval, RAG generation, approval, Activate, and learning.",
       icon: Megaphone,
       tone: "#256b8f",
     },
     {
-      title: "Narrate brief to activation",
-      text: "The application story starts with the brief, moves through audience, creative scoring, market opportunity, and activation control.",
+      title: "Show what is live",
+      text: `The creative workflow uses Databricks tables, UC Volume seed images, Vector Search, Lakebase state, and configurable endpoint metadata with ${creativeEndpoint} as the starter endpoint.`,
       icon: Users,
       tone: "#0f9f95",
     },
     {
-      title: "Be explicit about reality",
-      text: "Call out what is live in this branch, what is sample-backed, and where Model Serving or Genie can be connected later.",
+      title: "Separate data from visuals",
+      text: `The visual source is labeled as ${imageModel}, while generated cards embed the governed seed image reference and record lineage, rights, policy, model, preview, and activation metadata.`,
       icon: Layers3,
       tone: "#5b65d8",
     },
   ];
   const deploySteps = [
-    "cd my_project",
-    "npm ci",
-    "npm run build",
-    "databricks bundle deploy -t dev",
-    "databricks bundle run creative_command_center -t dev",
+    "databricks bundle deploy --target dev",
+    "cd my_project && npm run build",
+    "verify UC Volume seed images and Vector Search index",
+    "verify Lakebase app state resource",
+    "databricks bundle deploy --target dev",
+    "databricks bundle run creative_command_center --target dev",
   ];
   const tabStories = [
     {
       tab: "Overview",
       icon: Gauge,
-      story: "Open with the operating picture: campaign health, spend, response, quality, and current operational signals in one place.",
+      story: "Open with campaign health so the audience sees this is still an operating command center, not only a creative lab.",
       graphs: [
-        "KPI cards frame the business scorecard: spend, conversions, impressions, and creative quality.",
-        "The pacing curve shows whether spend is translating into conversion response over time.",
-        "Channel mix explains where budget is concentrated before drilling into individual platform delivery.",
-        "Quality radar and activity stream suggest whether the campaign is ready to scale or needs intervention.",
+        "KPI cards frame spend, impressions, conversions, and approved creative volume.",
+        "Trend, channel mix, quality, and activity cards create the context for why better creative selection matters.",
+        "Use this page to connect generated creative decisions back to business outcomes.",
       ],
       transition: "Move to Briefs to show where this operating loop starts.",
       tone: "#256b8f",
@@ -1861,76 +3548,93 @@ function TalkTrack({ data }: { data: AgencyData }) {
     {
       tab: "Briefs",
       icon: FileText,
-      story: "Everything starts with the campaign brief: objective, audience intent, budget, owner, status, and asset readiness.",
+      story: "Briefs are the strategic input: objective, audience intent, budget, owner, campaign status, and the detail popup used in review conversations.",
       graphs: [
-        "The brief table is the intake queue and approval checkpoint.",
-        "Status filters show which campaigns are still draft, in review, approved, or active.",
-        "Budget and asset counts explain how much work is ready to move into audience and creative planning.",
+        "The brief cards provide the campaign objective that later becomes the generation request context.",
+        "Open the detail popup to show budget, owner, target audience, objective, status, and supporting context without leaving Briefs.",
+        "Status and budget fields help explain why teams need a governed workflow instead of one-off asset generation.",
+        "Do not over-rotate on pixel generation here; this page is the planning handoff into audience traits and creative production.",
       ],
-      transition: "Move to Audience to show how the brief turns into targetable cohorts.",
+      transition: "Move to Audience to show how the brief becomes segment-specific creative direction.",
       tone: "#256b8f",
     },
     {
       tab: "Audiences",
       icon: Users,
-      story: "Audience lens compares who we can reach, how well each cohort matches the campaign, and what governance constraints apply.",
+      story: "Audience lens defines which segment traits should materially change the creative a user sees, with the C360 inventory cleaned up for readable reach and match-rate comparison.",
       graphs: [
-        "Reach bars show addressable scale by cohort.",
-        "The match-rate line shows quality of fit, not just audience size.",
-        "The cards surface LTV and eligibility flags so the team can avoid picking a large but poor-fit audience.",
+        "The reach inventory is organized as readable ranked rows instead of crowded x-axis labels.",
+        "Reach, match rate, LTV, and eligibility make sure we target segments that are large enough and allowed for activation.",
+        "Trait profiles add creative influence: topic affinity, propensity, churn risk, lifecycle stage, device usage, and preferred tone.",
+        "This is the key handoff into Studio: the segment is not just a targeting list, it changes the creative brief.",
       ],
-      transition: "Move to Creative to show how selected audiences are matched to assets and performance signals.",
+      transition: "Move to Studio to show how segment traits become generated and adapted creative variants.",
       tone: "#0f9f95",
     },
     {
-      tab: "Creatives",
+      tab: "Creative Studio",
       icon: Palette,
-      story: "Creative scoring is about evaluating existing or generated assets for readiness and predicted performance, not claiming pixel generation in this app.",
+      story: "Creative Studio is the core demo: category-based governed seed-image retrieval, RAG-backed variant generation, full-image preview, adaptation, and approval.",
       graphs: [
-        "The quality versus predicted CTR chart compares asset readiness against expected response.",
-        "Approval-status filters separate ready assets from drafts and pending review.",
-        "Creative cards connect format, target segment, tags, dimensions, quality, and predicted CTR.",
-        "The story is performance measurement and iteration: which creative should go live, which needs work, and which variants can support A/B testing.",
+        `Generate 4 Variants uses Vector Search and the configured creative endpoint metadata, currently ${creativeEndpoint}.`,
+        `Image model/source is labeled separately as ${imageModel}; seed thumbnails come from the UC Volume manifest by selected category.`,
+        "Generated variant thumbnails embed the seed image reference and can be opened into a full preview modal.",
+        "Approved base assets are governed source assets with rights metadata, prior performance, related app asset IDs, and usage contexts.",
+        "Create Adaptation tracks resize, crop, inpaint, outpaint, cleanup, background extension, safe-area, and aspect-ratio conversion.",
+        "Approve appears on Pending_Review cards here because Evaluation only shows approved creatives.",
       ],
-      transition: "Move to Markets to explain where the strongest creative-audience combinations should be scaled.",
+      transition: "Move to Evaluation to show how only approved creatives enter synthetic audience scoring.",
       tone: "#5b65d8",
     },
     {
-      tab: "Markets",
-      icon: MapPinned,
-      story: "Market expansion adds geography to the decision: where to scale, optimize, or test based on reach, spend, CTR, lift, and audience mix.",
+      tab: "Evaluation",
+      icon: ShieldCheck,
+      story: "Evaluation is the review gate: policy evidence and synthetic audience scores determine which approved variants are ready for Activate.",
       graphs: [
-        "The national map turns performance data into a regional planning surface.",
-        "Clicking a region exposes the local signal and recommended action.",
-        "Metro drilldown shows where reach and CTR concentrate within a region.",
-        "Reach momentum and audience mix explain whether the recommendation is backed by growth, concentration, or cohort fit.",
+        `Policy checks use ${policyEndpoint} metadata for brand, rights, regional usage, and safety review.`,
+        `Synthetic audience judging uses ${judgeEndpoint} metadata for click propensity, dwell time, relevance, clarity, fatigue risk, and brand fit.`,
+        "Approved Scored is intentionally filtered to approved variants so reviewers control what can advance.",
+        "Activate is the user-facing action that submits selected approved winners into the Activation dashboard, with optional multi-channel submission.",
       ],
-      transition: "Move to Activations to show how market decisions become platform execution.",
+      transition: "Move to Activations to connect selected winners to downstream media and personalization systems.",
       tone: "#c7793a",
     },
     {
       tab: "Activations",
       icon: RadioTower,
-      story: "Activation control shows the media execution layer: platform spend, status, impressions, CTR, conversions, sync timing, and A/B references.",
+      story: "Activations connect approved creative decisions to downstream delivery, Lakebase-retained submissions, and measurement.",
       graphs: [
         "Spend by platform shows where delivery is live and where budget is concentrated.",
-        "The activation table connects campaign IDs to platform status and response metrics.",
-        "CTR and conversions show whether launched creative is generating measurable response.",
-        "Sync timestamps reinforce that this is the operational control surface for trafficking and measurement.",
+        "New submissions show what was just activated from Evaluation before delivery metrics exist, and app state persists when Lakebase is available.",
+        "The live delivery table connects campaign IDs to platform status and response metrics.",
+        "Use this page to explain the production destination pattern: Meta, Google Ads, DV360, Adobe Target, email, AEM, Target, CMS, DAM, or onsite personalization.",
       ],
-      transition: "Use Ask AI as an overlay for follow-up questions, not as the final workflow step.",
+      transition: "Move to Markets to show how the same intelligence can guide regional scaling after activation.",
       tone: "#1f9d72",
+    },
+    {
+      tab: "Markets",
+      icon: MapPinned,
+      story: "Markets are the optimization lens after activation: where to scale, optimize, or test based on response and audience mix.",
+      graphs: [
+        "The map turns performance data into a regional planning surface.",
+        "Regional drilldowns explain where the creative-audience combination is working.",
+        "This page supports the continuous improvement story: real-world outcomes feed future prompts, segments, and retrieval patterns.",
+      ],
+      transition: "Use Ask AI for follow-up questions or the Architecture menu to explain the implementation.",
+      tone: "#c7793a",
     },
     {
       tab: "Ask AI",
       icon: Bot,
-      story: "Ask AI is decision support that can open from the workflow without forcing the presenter to leave the current context.",
+      story: "Ask AI remains decision support around the workflow; it uses Genie first and governed table summaries when free-form phrasing needs a fallback.",
       graphs: [
-        "Suggested prompts demonstrate the intended natural-language workflow.",
-        "Structured answer tables show how Genie or SQL-backed answers could appear behind the same UI.",
-        "In this branch the endpoint returns sample-backed answers, which is why the talk track should frame Genie as a production connection point.",
+        "Suggested prompts are pulled from the configured Genie space and demonstrate the intended natural-language workflow.",
+        "Structured answer tables show Genie-backed answers or governed Creative Command Center summaries behind the same UI.",
+        "The fallback wording now leads with the answer instead of exposing a backend failure message.",
+        "Keep the generation narrative in Studio and the implementation narrative in Architecture.",
       ],
-      transition: "Use Talk Track when you need to explain architecture, data source reality, or the demo story without leaving the app.",
+      transition: "Use Talk Track when you need a concise presenter narrative without leaving the application.",
       tone: "#13212d",
     },
   ];
@@ -1941,11 +3645,11 @@ function TalkTrack({ data }: { data: AgencyData }) {
         <div className="grid gap-5 p-5 xl:grid-cols-[1fr_0.9fr]">
           <div>
             <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Self-serve story</p>
-            <h2 className="mt-2 text-[28px] font-extrabold tracking-tight">Talk Track supports the demo narrative without becoming part of the workflow.</h2>
+            <h2 className="mt-2 text-[28px] font-extrabold tracking-tight">Talk Track explains the creative workflow without distracting from the live demo.</h2>
             <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[var(--muted)]">
-              The working product journey stays focused on brief intake, audience matching, creative performance scoring,
-              regional opportunity, and activation control. This tab is only a presenter aid: it keeps the architecture,
-              data provenance, and implementation caveats available inside the app while the customer-facing flow remains clean.
+              The working product journey now centers on audience-informed creative generation: inspect brief details, choose a segment,
+              retrieve category-filtered governed seed images, generate RAG-backed variants, expand thumbnails into full previews,
+              adapt and approve pending-review creatives in Studio, score approved variants, and Activate winners into the dashboard.
             </p>
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               {storyCards.map((card) => {
@@ -1964,24 +3668,41 @@ function TalkTrack({ data }: { data: AgencyData }) {
           </div>
           <div className="grid content-start gap-3">
             <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-soft)] p-4">
-              <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Bundle data setup</p>
+              <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Workflow data setup</p>
               <div className="mt-3 grid grid-cols-3 gap-3">
-                <MetricMini label="CSV extracts" value={`${loadedTables.length}`} />
+                <MetricMini label="API tables" value={`${loadedTables.length}`} />
                 <MetricMini label="Rows" value={formatNumber(totalRows)} />
-                <MetricMini label="Bundle" value={data.backendTables.bundle_ready ? "Ready" : "Check"} />
+                <MetricMini label="Backend" value={data.backendTables.data_source === "databricks_sql" ? "DBSQL" : "Fallback"} />
               </div>
               <p className="mt-3 text-[12px] leading-5 text-[var(--muted)]">
-                Sample backend tables deploy with the Databricks App under <span className="font-mono">{data.backendTables.data_dir}</span>.
+                Creative workflow tables are served through FastAPI from <span className="font-mono">{data.backendTables.catalog ?? "cme_outcomes_uswest"}.{data.backendTables.schema ?? "lakefoundry"}</span>,
+                with CSV fallback available for local demos.
               </p>
             </div>
             <div className="rounded-lg border border-[var(--line)] bg-white p-4">
-              <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Audience model check</p>
+              <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Creative endpoint check</p>
               <p className="mt-2 text-[14px] font-bold">
-                {data.modelStatus.audience_lens_uses_model_serving ? "Real Model Serving call detected" : "No real Model Serving call detected"}
+                {modelMode} / {creativeEndpoint}
               </p>
               <p className="mt-2 text-[12px] leading-5 text-[var(--muted)]">
-                Audience lens reads <span className="font-mono">{data.modelStatus.checked_path}</span> from{" "}
-                <span className="font-mono">{audienceTable?.path ?? "embedded fallback"}</span>.
+                Policy review uses <span className="font-mono">{policyEndpoint}</span>; synthetic audience judging uses{" "}
+                <span className="font-mono">{judgeEndpoint}</span>.
+              </p>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <MetricMini label="Base assets" value={`${approvedBaseAssets}`} />
+                <MetricMini label="Pending" value={`${pendingVariants}`} />
+                <MetricMini label="Approved" value={`${approvedVariants}`} />
+              </div>
+            </div>
+            <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+              <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">Key table paths</p>
+              <div className="mt-3 space-y-2 font-mono text-[11px] text-[var(--muted)]">
+                <p>{baseAssetTable?.path ?? "base asset fallback"}</p>
+                <p>{variantTable?.path ?? "variant fallback"}</p>
+                <p>{evaluationTable?.path ?? "evaluation fallback"}</p>
+              </div>
+              <p className="mt-3 text-[12px] leading-5 text-[var(--muted)]">
+                Use these paths when explaining where retrieval, generation, and evaluation records are persisted.
               </p>
             </div>
           </div>
@@ -2022,7 +3743,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
 
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <Panel>
-          <SectionHeader title="Backend tables in this bundle" eyebrow="CSV extracts to FastAPI contracts" />
+          <SectionHeader title="Workflow tables behind the APIs" eyebrow="Databricks tables to FastAPI contracts" />
           <div className="overflow-x-auto thin-scrollbar">
             <table className="w-full min-w-[960px] text-left">
               <thead className="bg-[var(--panel-soft)] text-[11px] uppercase text-[var(--muted)]">
@@ -2054,7 +3775,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
 
         <div className="space-y-5">
           <Panel>
-            <SectionHeader title="Deployment talk track" eyebrow="Repo to Databricks App" />
+          <SectionHeader title="Deployment talk track" eyebrow="Repo to Databricks workspace" />
             <div className="space-y-2 p-4">
               {deploySteps.map((step, index) => (
                 <div key={step} className="flex items-center gap-3 rounded-md border border-[var(--line)] bg-white px-3 py-2">
@@ -2068,18 +3789,20 @@ function TalkTrack({ data }: { data: AgencyData }) {
           </Panel>
 
           <Panel>
-            <SectionHeader title="Architecture summary" eyebrow="What changes in production" />
+          <SectionHeader title="Architecture summary" eyebrow="Current implementation" />
             <div className="space-y-3 p-4 text-[12px] leading-5 text-[var(--muted)]">
               <p>
-                The portable branch serves CSV extracts through FastAPI so the app can deploy without workspace-specific tables,
-                warehouses, Genie spaces, or serving endpoints.
+                The app is deployed as a Databricks App with a React frontend and FastAPI backend. It prefers Databricks SQL tables
+                in Unity Catalog and falls back to local CSV data only when workspace access is unavailable.
               </p>
               <p>
-                The production path replaces CSV extracts with Unity Catalog tables, keeps the same <span className="font-mono">/api/*</span> contracts,
-                and can add Genie, SQL Warehouse, Lakebase, or Model Serving behind the API boundary.
+                The creative workflow now has configurable endpoint settings for generation, policy review, and synthetic audience judging,
+                all defaulting to <span className="font-mono">{creativeEndpoint}</span>.
               </p>
               <p>
-                Current model verification is explicit: Audience lens does not call a real Model Serving endpoint in this branch.
+                The generated demo images use governed UC Volume seed references and RAG metadata. The metadata path is production-shaped:
+                source asset, prompt, model endpoint, transformations, policy evidence, approval status, evaluation rank, Activate payload,
+                Lakebase state, and feedback.
               </p>
             </div>
           </Panel>
@@ -2087,7 +3810,7 @@ function TalkTrack({ data }: { data: AgencyData }) {
       </div>
 
       <Panel>
-        <SectionHeader title="Mock CSV vs pipeline data contract" eyebrow="Production adjustments" />
+        <SectionHeader title="Creative workflow data contract" eyebrow="Implementation notes" />
         <div className="overflow-x-auto thin-scrollbar">
           <table className="w-full min-w-[1080px] text-left">
             <thead className="bg-[var(--panel-soft)] text-[11px] uppercase text-[var(--muted)]">
@@ -2115,10 +3838,31 @@ function TalkTrack({ data }: { data: AgencyData }) {
   );
 }
 
+function useAskSuggestions() {
+  const [suggestions, setSuggestions] = useState(GENIE_RECOMMENDED_QUESTIONS);
+
+  useEffect(() => {
+    let ignore = false;
+    fetchJson<string[]>("/api/ask/suggestions")
+      .then((questions) => {
+        if (!ignore && questions.length) setSuggestions(questions);
+      })
+      .catch(() => {
+        if (!ignore) setSuggestions(GENIE_RECOMMENDED_QUESTIONS);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  return suggestions;
+}
+
 function useAskAssistant() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const suggestions = useAskSuggestions();
 
   async function submit(question: string) {
     const trimmed = question.trim();
@@ -2142,7 +3886,7 @@ function useAskAssistant() {
     }
   }
 
-  return { input, loading, messages, setInput, submit };
+  return { input, loading, messages, setInput, submit, suggestions };
 }
 
 function AskMessageList({
@@ -2171,7 +3915,7 @@ function AskMessageList({
           </div>
         </div>
       ))}
-      {loading ? <p className="text-[13px] text-[var(--muted)]">Querying FastAPI...</p> : null}
+      {loading ? <p className="text-[13px] text-[var(--muted)]">Querying Ask AI...</p> : null}
     </div>
   );
 }
@@ -2201,7 +3945,7 @@ function AskInputBar({
         value={input}
         onChange={(event) => setInput(event.target.value)}
         className="min-w-0 flex-1 rounded-md border border-[var(--line)] px-3 py-2 text-[13px] outline-none focus:border-[var(--teal)]"
-        placeholder="Ask about campaign performance..."
+        placeholder="Ask about variants, approvals, policy, or activation..."
       />
       <button disabled={loading || !input.trim()} className="inline-flex items-center gap-2 rounded-md bg-[var(--teal)] px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-40">
         <Send size={15} />
@@ -2293,16 +4037,28 @@ function SolutionArchitecturePanel({
     "/api/audiences",
     "/api/creatives",
     "/api/activations",
+    "/api/activations/:id/lineage",
     "/api/markets",
     "/api/backend-tables",
     "/api/model-status",
+    "/api/audience-traits",
+    "/api/creative-assets/search",
+    "/api/creative-assets/:id/thumbnail",
+    "/api/creative-generation/requests",
+    "/api/creative-variants",
+    "/api/creative-transformations",
+    "/api/policy-checks",
+    "/api/synthetic-evaluations",
+    "/api/activation-exports",
+    "/api/state/events",
+    "/api/ask/suggestions",
     "/api/ask",
   ];
   const tabs: Array<{ id: ArchitectureTab; label: string; icon: typeof Gauge; description: string }> = [
-    { id: "business", label: "Business Overview", icon: Gauge, description: "CMO questions and outcomes" },
-    { id: "data", label: "Data & ML Pipeline", icon: Layers3, description: "Data sources through serving" },
-    { id: "platform", label: "Platform Architecture", icon: RadioTower, description: "AWS hosting, VPN, and auth" },
-    { id: "agent", label: "Agent Topology", icon: Bot, description: "Future Ask AI orchestration" },
+    { id: "business", label: "Business Overview", icon: Gauge, description: "Brief, segment, preview, approve, Activate" },
+    { id: "data", label: "Data & AI Pipeline", icon: Layers3, description: "Seed images, RAG, lineage, Lakebase" },
+    { id: "platform", label: "Platform Architecture", icon: RadioTower, description: "Databricks app, Genie, Lakebase, APIs" },
+    { id: "agent", label: "Workflow Topology", icon: Bot, description: "Retrieval, generation, review, Ask AI" },
   ];
 
   return (
@@ -2327,7 +4083,7 @@ function SolutionArchitecturePanel({
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-[16px] font-bold">Architecture menu</p>
-                  <p className="truncate text-[12px] text-[var(--muted)]">Business lens, platform flow, data and ML pipeline, and agent topology</p>
+                  <p className="truncate text-[12px] text-[var(--muted)]">Creative workflow, seed-image RAG, Lakebase state, Ask AI, and activation topology</p>
                 </div>
               </div>
               <button
@@ -2365,7 +4121,7 @@ function SolutionArchitecturePanel({
 
             <div className="thin-scrollbar flex-1 overflow-y-auto p-5">
               {activeTab === "business" && (data ? <BusinessArchitectureOverview data={data} /> : <LoadingState />)}
-              {activeTab === "data" && <EndToEndArchitectureDiagram endpoints={endpoints} />}
+              {activeTab === "data" && <EndToEndArchitectureDiagram endpoints={endpoints} data={data} />}
               {activeTab === "platform" && (data ? <PlatformArchitecture data={data} /> : <LoadingState />)}
               {activeTab === "agent" && (data ? <AgentTopology data={data} /> : <LoadingState />)}
             </div>
@@ -2377,86 +4133,98 @@ function SolutionArchitecturePanel({
 }
 
 function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
+  const creativeEndpoint = data.modelStatus.creative_model_endpoint ?? data.modelStatus.configured_endpoint ?? "databricks-gpt-5-mini";
   const userJourney = [
     {
-      phase: "Plan",
+      phase: "Brief + Segment",
       icon: Gauge,
       color: "#256b8f",
       bgColor: "bg-blue-50",
       borderColor: "border-blue-200",
-      persona: "CMO / Campaign Lead",
-      goal: "Set campaign objectives and budget allocation",
-      touchpoints: ["Overview dashboard", "Budget planner", "Goal setting"],
-      outcome: "Approved campaign brief with KPI targets",
+      persona: "Audience Strategist",
+      goal: "Confirm campaign detail and define creative-influencing segment traits",
+      touchpoints: ["Brief detail popup", "Audience inventory", "Eligibility checks"],
+      outcome: "Brief and segment context with topic, lifecycle, risk, and device signals",
     },
     {
-      phase: "Target",
+      phase: "Retrieve",
       icon: Users,
       color: "#0f9f95",
       bgColor: "bg-emerald-50",
       borderColor: "border-emerald-200",
-      persona: "Audience Strategist",
-      goal: "Identify and prioritize audience segments",
-      touchpoints: ["Audience explorer", "Cohort builder", "Match analysis"],
-      outcome: "Activation-ready audience lists",
+      persona: "Creative Producer",
+      goal: "Find governed base assets for segment, placement, and objective",
+      touchpoints: ["Category filter", "UC Volume seed images", "Vector Search index"],
+      outcome: "Rights-aware seed image references with metadata and usage context",
     },
     {
-      phase: "Create",
+      phase: "Generate",
       icon: Palette,
       color: "#5b65d8",
       bgColor: "bg-violet-50",
       borderColor: "border-violet-200",
       persona: "Creative Director",
-      goal: "Evaluate and approve creative assets",
-      touchpoints: ["Asset library", "Quality scores", "A/B test setup"],
-      outcome: "Approved creatives with test variants",
+      goal: `Create four segment-specific variants through ${creativeEndpoint}`,
+      touchpoints: ["Generation brief", "RAG references", "Full preview modal"],
+      outcome: "Pending-review variant slate with embedded seed reference and lineage metadata",
     },
     {
-      phase: "Activate",
+      phase: "Approve",
       icon: Megaphone,
       color: "#c7793a",
       bgColor: "bg-amber-50",
       borderColor: "border-amber-200",
-      persona: "Media Planner",
-      goal: "Deploy campaigns to platforms",
-      touchpoints: ["Platform sync", "Trafficking status", "Go-live checklist"],
-      outcome: "Live campaigns across channels",
+      persona: "Brand / Legal Reviewer",
+      goal: "Approve eligible pending creatives after policy and evaluation review",
+      touchpoints: ["Creative Studio approval", "Policy checks", "Synthetic scores"],
+      outcome: "Approved creative set visible in the evaluation gate",
     },
     {
-      phase: "Optimize",
+      phase: "Activate",
       icon: TrendingUp,
       color: "#1f9d72",
       bgColor: "bg-teal-50",
       borderColor: "border-teal-200",
+      persona: "Media Ops",
+      goal: "Activate approved winners into selected channels",
+      touchpoints: ["Activate button", "Channel recommendation", "Activation dashboard"],
+      outcome: "Lakebase-backed activation record with creative and segment metadata",
+    },
+    {
+      phase: "Learn",
+      icon: LineChartIcon,
+      color: "#13212d",
+      bgColor: "bg-slate-50",
+      borderColor: "border-slate-200",
       persona: "Performance Analyst",
-      goal: "Monitor and improve campaign performance",
-      touchpoints: ["Real-time metrics", "Market insights", "Ask AI"],
-      outcome: "Optimized spend and improved ROI",
+      goal: "Ask governed questions and compare live results with synthetic predictions",
+      touchpoints: ["Ask AI", "Feedback table", "Prediction error"],
+      outcome: "Improved prompts, segments, retrieval, and playbooks",
     },
   ];
 
   const dataFlows = [
-    { from: "1P Data", to: "Audience Builder", type: "CRM, transactions, web" },
-    { from: "Partner Data", to: "Enrichment", type: "Demographics, intent" },
-    { from: "Creative Assets", to: "Quality Scoring", type: "Images, video, copy" },
-    { from: "Platform APIs", to: "Activation Sync", type: "Meta, Google, TTD" },
-    { from: "Performance Data", to: "Dashboards", type: "Impressions, conversions" },
+    { from: "Brief details", to: "Generation brief", type: "objective, budget, owner, target audience" },
+    { from: "Seed images", to: "Vector retrieval", type: "category, metadata, rights, approved usage contexts" },
+    { from: "Request payload", to: "Model endpoint", type: "segment + prompt + placement + selected seed reference" },
+    { from: "Variant slate", to: "Policy / approval", type: "brand, rights, regional usage, safety" },
+    { from: "Approved winners", to: "Activate dashboard", type: "activation payload, Lakebase state, reusable metadata" },
   ];
 
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-[var(--line)] bg-gradient-to-r from-slate-50 via-white to-slate-50 p-5">
         <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--brand-accent)]">Business User Journey</p>
-        <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Campaign Lifecycle Architecture</h2>
+        <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Creative Generation Workflow Architecture</h2>
         <p className="mt-2 max-w-3xl text-[13px] text-[var(--muted)]">
-          How marketing teams interact with the Creative Command Center — from planning through optimization.
-          Each phase has a primary persona, key touchpoints, and a defined outcome.
+          How teams move from audience traits and governed retrieval to endpoint-backed creative generation, review,
+          onsite activation, and feedback-driven improvement.
         </p>
       </div>
 
       <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-5">
-        <p className="mb-4 text-[11px] font-bold uppercase text-slate-500">User Journey Phases</p>
-        <div className="grid grid-cols-5 gap-3">
+        <p className="mb-4 text-[11px] font-bold uppercase text-slate-500">Workflow Phases</p>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           {userJourney.map((phase, index) => {
             const Icon = phase.icon;
             return (
@@ -2497,7 +4265,7 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-[var(--line)] bg-white p-5">
           <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Data Flow Architecture</p>
-          <h3 className="mt-1 text-[16px] font-extrabold">How Data Moves Through the System</h3>
+          <h3 className="mt-1 text-[16px] font-extrabold">How Creative Data Moves Through the System</h3>
           <div className="mt-4 space-y-2">
             {dataFlows.map((flow) => (
               <div key={flow.from} className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-slate-50/50 p-3">
@@ -2523,11 +4291,11 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
             <p className="text-[11px] font-bold uppercase text-[var(--faint)]">User Roles & Access</p>
             <div className="mt-3 space-y-2">
               {[
-                { role: "CMO / Executive", access: "Read all, approve budgets", views: "Overview, Reports" },
-                { role: "Campaign Manager", access: "Full campaign control", views: "All lenses" },
-                { role: "Audience Analyst", access: "Audience data, segments", views: "Audiences, Markets" },
-                { role: "Creative Team", access: "Asset management", views: "Creative, Briefs" },
-                { role: "Media Ops", access: "Platform activation", views: "Activations, Sync" },
+                { role: "Audience Strategy", access: "Segment traits and eligibility", views: "Audiences" },
+                { role: "Creative Studio", access: "Generate and adapt variants", views: "Studio" },
+                { role: "Brand / Legal", access: "Policy review and approvals", views: "Studio, Evaluation" },
+                { role: "Media Ops", access: "Activate and monitor submissions", views: "Evaluation, Activations" },
+                { role: "Performance", access: "Feedback and prediction gaps", views: "Overview, Markets" },
               ].map((user) => (
                 <div key={user.role} className="flex items-center justify-between rounded-lg border border-[var(--line)] bg-slate-50/50 px-3 py-2">
                   <p className="text-[11px] font-bold text-[var(--ink)]">{user.role}</p>
@@ -2541,11 +4309,11 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-blue-600" />
-              <p className="text-[12px] font-bold text-blue-900">Ask AI — Cross-Phase Intelligence</p>
+              <p className="text-[12px] font-bold text-blue-900">Endpoint-Backed Workflow Controls</p>
             </div>
-            <p className="mt-2 text-[11px] text-blue-800">AI assistant spans all phases, helping users:</p>
+            <p className="mt-2 text-[11px] text-blue-800">The current implementation tracks:</p>
             <div className="mt-2 grid grid-cols-2 gap-1">
-              {["Answer campaign questions", "Surface insights", "Recommend actions", "Explain metrics"].map((cap) => (
+              {["Configured model endpoints", "Variant-level lineage", "Policy and approval state", "Channel activation payloads"].map((cap) => (
                 <div key={cap} className="rounded bg-white/70 px-2 py-1 text-[10px] font-medium text-blue-700">{cap}</div>
               ))}
             </div>
@@ -2556,7 +4324,7 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         <p className="text-[11px] font-bold uppercase text-slate-500">Integration Touchpoints</p>
         <div className="mt-3 grid grid-cols-6 gap-2">
-          {["CRM Systems", "Data Warehouse", "Ad Platforms", "Analytics", "Creative Tools", "Reporting"].map((system) => (
+              {["Briefs", "C360", "UC Volumes", "Vector Search", "Lakebase", "Genie / Ask AI", "Policy Tables", "Onsite Personalization"].map((system) => (
             <div key={system} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center">
               <p className="text-[11px] font-semibold text-[var(--ink)]">{system}</p>
             </div>
@@ -2568,6 +4336,10 @@ function BusinessArchitectureOverview({ data }: { data: AgencyData }) {
 }
 
 function PlatformArchitecture({ data }: { data: AgencyData }) {
+  const creativeEndpoint = data.modelStatus.creative_model_endpoint ?? data.modelStatus.configured_endpoint ?? "databricks-gpt-5-mini";
+  const imageModel = data.modelStatus.creative_image_model ?? "seeded synthetic image assets";
+  const policyEndpoint = data.modelStatus.policy_model_endpoint ?? creativeEndpoint;
+  const judgeEndpoint = data.modelStatus.judge_model_endpoint ?? creativeEndpoint;
   const layers = [
     {
       name: "Presentation Layer",
@@ -2576,56 +4348,61 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
       borderColor: "border-blue-200",
       components: [
         { name: "React App", type: "Frontend", spec: "Vite + TypeScript" },
-        { name: "FastAPI", type: "API Gateway", spec: "Python 3.11" },
+        { name: "FastAPI", type: "API Gateway", spec: "Databricks App runtime" },
+        { name: "Creative Studio", type: "Workflow UI", spec: "Generate, preview, adapt, approve" },
       ],
     },
     {
-      name: "Compute Layer",
+      name: "Workflow API Layer",
       color: "#5b65d8",
       bgColor: "bg-violet-50",
       borderColor: "border-violet-200",
       components: [
-        { name: "SQL Warehouse", type: "Analytics", spec: "Serverless" },
-        { name: "Model Serving", type: "ML Inference", spec: "GPU/CPU" },
-        { name: "Genie", type: "NL Query", spec: "AI-powered" },
+        { name: "SQL Warehouse", type: "Table Reads", spec: "Databricks SQL" },
+        { name: "Generation API", type: "FastAPI", spec: "/api/creative-generation" },
+        { name: "Approval API", type: "FastAPI", spec: "/api/creative-variants/:id/approval" },
+        { name: "State API", type: "FastAPI", spec: "/api/state/events" },
       ],
     },
     {
-      name: "Orchestration Layer",
+      name: "Data + AI Services",
       color: "#0f9f95",
       bgColor: "bg-emerald-50",
       borderColor: "border-emerald-200",
       components: [
-        { name: "Lakeflow", type: "Pipelines", spec: "Declarative ETL" },
-        { name: "Workflows", type: "Jobs", spec: "Scheduled/Triggered" },
-        { name: "MLflow", type: "ML Ops", spec: "Experiment tracking" },
+        { name: "Model Serving", type: "Generation", spec: creativeEndpoint },
+        { name: "Seed Image Source", type: "Visual Assets", spec: imageModel },
+        { name: "Policy Endpoint", type: "Review", spec: policyEndpoint },
+        { name: "Judge Endpoint", type: "Evaluation", spec: judgeEndpoint },
+        { name: "Ask AI", type: "Genie + Fallback", spec: "curated prompts + table summaries" },
       ],
     },
     {
-      name: "Storage Layer",
+      name: "Governance + Storage Layer",
       color: "#c7793a",
       bgColor: "bg-amber-50",
       borderColor: "border-amber-200",
       components: [
-        { name: "Unity Catalog", type: "Governance", spec: `${data.backendTables.tables.length} tables` },
-        { name: "Delta Lake", type: "Tables", spec: "ACID transactions" },
-        { name: "S3", type: "Object Store", spec: "AWS managed" },
+        { name: "Unity Catalog", type: "Governance", spec: `${data.backendTables.tables.length} API tables` },
+        { name: "UC Volume", type: "Seed Images", spec: "artifacts/creative_assets/seed_images" },
+        { name: "Vector Search", type: "RAG Retrieval", spec: "creative-asset-search-dev" },
+        { name: "Lakebase", type: "App State", spec: "generation, approval, activation events" },
       ],
     },
   ];
 
   const securityZones = [
-    { zone: "Public Internet", trust: "Untrusted", controls: ["WAF", "DDoS protection", "TLS 1.3"] },
-    { zone: "DMZ / Edge", trust: "Semi-trusted", controls: ["Load balancer", "API gateway", "Rate limiting"] },
-    { zone: "Application", trust: "Trusted", controls: ["Service mesh", "mTLS", "RBAC"] },
-    { zone: "Data", trust: "Highly trusted", controls: ["Encryption at rest", "Column masking", "Row filters"] },
+    { zone: "Databricks App", trust: "Trusted", controls: ["same-origin API", "service principal auth", "user token for Genie"] },
+    { zone: "Workflow APIs", trust: "Trusted", controls: ["FastAPI validation", "approval gate", "policy checks"] },
+    { zone: "Data + AI", trust: "Highly trusted", controls: ["SQL warehouse", "Genie", "model endpoints", "Vector Search"] },
+    { zone: "Governed Storage", trust: "Highly trusted", controls: ["Unity Catalog", "UC volumes", "Lakebase", "table ACLs"] },
   ];
 
   const authFlow = [
-    { step: "1", name: "SSO Redirect", from: "Browser", to: "Enterprise IdP", protocol: "SAML/OIDC" },
-    { step: "2", name: "Token Issue", from: "IdP", to: "Databricks", protocol: "JWT" },
-    { step: "3", name: "Workspace Auth", from: "Databricks", to: "Unity Catalog", protocol: "SCIM" },
-    { step: "4", name: "Data Access", from: "UC", to: "S3/Delta", protocol: "IAM" },
+    { step: "1", name: "User Session", from: "Browser", to: "Databricks App", protocol: "workspace auth" },
+    { step: "2", name: "API Request", from: "React", to: "FastAPI", protocol: "same-origin" },
+    { step: "3", name: "Workspace Call", from: "FastAPI", to: "SQL / Genie / Model Serving", protocol: "SDK / REST" },
+    { step: "4", name: "Governed Access", from: "Databricks", to: "UC tables + volumes + Lakebase", protocol: "Unity Catalog" },
   ];
 
   return (
@@ -2634,16 +4411,17 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-slate-500">// ARCHITECTURE BLUEPRINT</p>
-            <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Platform Reference Architecture</h2>
+            <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Databricks Creative Workflow Platform</h2>
             <p className="mt-2 max-w-2xl text-[13px] text-[var(--muted)]">
-              Four-layer architecture on AWS with Databricks as the unified data + AI platform.
-              Security zones enforce defense in depth from edge to data.
+              React and FastAPI run as a Databricks App. Workflow APIs read governed tables, retrieve approved assets,
+              invoke configurable model endpoints, and write lineage-ready approval, policy, evaluation, and activation records.
             </p>
           </div>
           <div className="hidden shrink-0 font-mono text-[10px] text-slate-400 md:block">
-            <p>Region: us-west-2</p>
-            <p>VPC: 10.0.0.0/16</p>
-            <p>AZs: 3</p>
+            <p>Mode: {data.modelStatus.creative_generation_mode ?? "model_endpoint"}</p>
+            <p>Model: {creativeEndpoint}</p>
+            <p>Image: {imageModel}</p>
+            <p>Destination: selectable channels</p>
           </div>
         </div>
       </div>
@@ -2734,13 +4512,14 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
         <p className="font-mono text-[11px] font-bold uppercase text-emerald-700">Network Topology</p>
         <div className="mt-3 grid gap-3 md:grid-cols-4">
           {[
-            { name: "VPN / Direct Connect", desc: "Corporate → AWS private path", icon: "🔒" },
-            { name: "PrivateLink", desc: "Private API endpoints in VPC", icon: "🔗" },
-            { name: "NAT Gateway", desc: "Controlled outbound egress", icon: "🌐" },
-            { name: "Security Groups", desc: "Instance-level firewall", icon: "🛡️" },
+            { name: "Databricks Apps", desc: "Managed web runtime", code: "APP" },
+            { name: "SQL Warehouse", desc: "Governed table access", code: "SQL" },
+            { name: "Vector Search", desc: "Seed image retrieval", code: "VS" },
+            { name: "Lakebase", desc: "Durable app state", code: "PG" },
+            { name: "Genie", desc: "Ask AI questions", code: "AI" },
           ].map((item) => (
             <div key={item.name} className="rounded-lg border border-emerald-200 bg-white p-3">
-              <p className="text-[16px]">{item.icon}</p>
+              <p className="inline-flex h-7 min-w-7 items-center justify-center rounded bg-emerald-100 px-2 font-mono text-[10px] font-bold text-emerald-700">{item.code}</p>
               <p className="mt-1 text-[12px] font-bold text-[var(--ink)]">{item.name}</p>
               <p className="mt-0.5 text-[10px] text-[var(--muted)]">{item.desc}</p>
             </div>
@@ -2762,9 +4541,14 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
             </thead>
             <tbody className="divide-y divide-[var(--line)] font-mono">
               <tr><td className="px-3 py-2">Databricks App</td><td className="px-3 py-2 text-[var(--muted)]">Presentation</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">React + FastAPI</td></tr>
-              <tr><td className="px-3 py-2">SQL Warehouse</td><td className="px-3 py-2 text-[var(--muted)]">Compute</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">Serverless</td></tr>
-              <tr><td className="px-3 py-2">Model Serving</td><td className="px-3 py-2 text-[var(--muted)]">ML</td><td className="px-3 py-2"><span className={`rounded px-1.5 py-0.5 ${data.modelStatus.configured_endpoint ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{data.modelStatus.configured_endpoint ? "Configured" : "None"}</span></td><td className="px-3 py-2 text-[var(--muted)]">GPU endpoint</td></tr>
-              <tr><td className="px-3 py-2">Unity Catalog</td><td className="px-3 py-2 text-[var(--muted)]">Governance</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">{data.backendTables.tables.length} tables governed</td></tr>
+              <tr><td className="px-3 py-2">SQL Warehouse</td><td className="px-3 py-2 text-[var(--muted)]">Compute</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">Databricks table backend</td></tr>
+              <tr><td className="px-3 py-2">Model Serving</td><td className="px-3 py-2 text-[var(--muted)]">Creative AI</td><td className="px-3 py-2"><span className={`rounded px-1.5 py-0.5 ${data.modelStatus.configured_endpoint ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{data.modelStatus.configured_endpoint ? "Configured" : "None"}</span></td><td className="px-3 py-2 text-[var(--muted)]">{creativeEndpoint}</td></tr>
+              <tr><td className="px-3 py-2">Seed Image Source</td><td className="px-3 py-2 text-[var(--muted)]">Visual Assets</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">{imageModel}</td></tr>
+              <tr><td className="px-3 py-2">Policy / Judge Endpoints</td><td className="px-3 py-2 text-[var(--muted)]">Review AI</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Configured</span></td><td className="px-3 py-2 text-[var(--muted)]">{policyEndpoint} / {judgeEndpoint}</td></tr>
+              <tr><td className="px-3 py-2">Vector Search</td><td className="px-3 py-2 text-[var(--muted)]">Retrieval</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">creative-asset-search-dev</td></tr>
+              <tr><td className="px-3 py-2">Lakebase</td><td className="px-3 py-2 text-[var(--muted)]">State Store</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Configured</span></td><td className="px-3 py-2 text-[var(--muted)]">creative_command_center_state</td></tr>
+              <tr><td className="px-3 py-2">Genie Space</td><td className="px-3 py-2 text-[var(--muted)]">Ask AI</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Configured</span></td><td className="px-3 py-2 text-[var(--muted)]">curated prompts + governed fallback</td></tr>
+              <tr><td className="px-3 py-2">Unity Catalog</td><td className="px-3 py-2 text-[var(--muted)]">Governance</td><td className="px-3 py-2"><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Active</span></td><td className="px-3 py-2 text-[var(--muted)]">{data.backendTables.tables.length} API-backed tables</td></tr>
             </tbody>
           </table>
         </div>
@@ -2774,38 +4558,49 @@ function PlatformArchitecture({ data }: { data: AgencyData }) {
 }
 
 function AgentTopology({ data }: { data: AgencyData }) {
+  const creativeEndpoint = data.modelStatus.creative_model_endpoint ?? data.modelStatus.configured_endpoint ?? "databricks-gpt-5-mini";
+  const imageModel = data.modelStatus.creative_image_model ?? "seeded synthetic image assets";
+  const policyEndpoint = data.modelStatus.policy_model_endpoint ?? creativeEndpoint;
+  const judgeEndpoint = data.modelStatus.judge_model_endpoint ?? creativeEndpoint;
   const agents = [
-    { id: "supervisor", name: "Supervisor", type: "Orchestrator", model: "Claude 3.5", tools: ["intent_classifier", "policy_guard", "response_synth"], color: "#13212d" },
-    { id: "genie", name: "Genie Analyst", type: "Data Agent", model: "Genie Space", tools: ["sql_exec", "schema_lookup", "uc_query"], color: "#256b8f" },
-    { id: "scorer", name: "Model Scorer", type: "ML Agent", model: "Serving Endpoint", tools: ["feature_fetch", "model_invoke", "score_explain"], color: "#0f9f95" },
-    { id: "creative", name: "Creative Eval", type: "Content Agent", model: "Vision + LLM", tools: ["asset_analyze", "quality_score", "variant_compare"], color: "#5b65d8" },
-    { id: "activation", name: "Activation Ops", type: "Ops Agent", model: "Tool-use LLM", tools: ["platform_api", "status_check", "alert_trigger"], color: "#c7793a" },
+    { id: "supervisor", name: "Workflow API", type: "Orchestrator", model: "FastAPI + Databricks SDK", tools: ["request_validate", "table_fetch", "lakebase_state"], color: "#13212d" },
+    { id: "retriever", name: "Seed Retriever", type: "RAG Retrieval", model: "Vector Search + UC Volume", tools: ["asset_search", "category_filter", "thumbnail_fetch"], color: "#256b8f" },
+    { id: "generator", name: "Creative Generator", type: "Model Endpoint", model: `${creativeEndpoint} / ${imageModel}`, tools: ["model_invoke", "variant_build", "preview_embed"], color: "#0f9f95" },
+    { id: "reviewer", name: "Policy Reviewer", type: "Governance", model: policyEndpoint, tools: ["brand_check", "rights_check", "safety_check"], color: "#5b65d8" },
+    { id: "judge", name: "Audience Judge", type: "Evaluation", model: judgeEndpoint, tools: ["panel_score", "rank_variants", "evidence_write"], color: "#c7793a" },
+    { id: "activation", name: "Activation Ops", type: "Activate", model: "multi-channel", tools: ["approval_gate", "payload_write", "dashboard_sync"], color: "#1f9d72" },
+    { id: "ask_ai", name: "Ask AI", type: "Decision Support", model: "Genie + governed fallback", tools: ["sample_prompt", "closest_retry", "table_summary"], color: "#13212d" },
   ];
 
   const toolMatrix = [
-    { tool: "Unity Catalog", genie: true, scorer: true, creative: false, activation: false, desc: "Governed table access" },
-    { tool: "SQL Warehouse", genie: true, scorer: false, creative: false, activation: true, desc: "Analytics queries" },
-    { tool: "Model Serving", genie: false, scorer: true, creative: true, activation: false, desc: "ML inference" },
-    { tool: "Feature Store", genie: false, scorer: true, creative: false, activation: false, desc: "Real-time features" },
-    { tool: "Vector Search", genie: true, scorer: false, creative: true, activation: false, desc: "Semantic retrieval" },
-    { tool: "MLflow", genie: false, scorer: true, creative: true, activation: false, desc: "Experiment tracking" },
+    { tool: "Unity Catalog", retriever: true, generator: true, reviewer: true, judge: true, activation: true },
+    { tool: "UC Volumes", retriever: true, generator: true, reviewer: false, judge: false, activation: false },
+    { tool: "Vector Search", retriever: true, generator: true, reviewer: false, judge: false, activation: false },
+    { tool: "Lakebase", retriever: false, generator: true, reviewer: true, judge: true, activation: true },
+    { tool: "Genie Space", retriever: false, generator: false, reviewer: false, judge: true, activation: true },
+    { tool: "Model Serving", retriever: false, generator: true, reviewer: true, judge: true, activation: false },
+    { tool: "Policy Tables", retriever: false, generator: false, reviewer: true, judge: false, activation: true },
+    { tool: "Activation Submit", retriever: false, generator: false, reviewer: false, judge: true, activation: true },
   ];
 
   const stateMachine = [
-    { state: "IDLE", desc: "Awaiting user input", next: ["ROUTING"] },
-    { state: "ROUTING", desc: "Supervisor classifies intent", next: ["ANALYTICS", "SCORING", "CREATIVE", "OPS"] },
-    { state: "ANALYTICS", desc: "Genie/SQL query execution", next: ["SYNTHESIS"] },
-    { state: "SCORING", desc: "Model inference + explain", next: ["SYNTHESIS"] },
-    { state: "CREATIVE", desc: "Asset evaluation", next: ["SYNTHESIS"] },
-    { state: "OPS", desc: "Platform status check", next: ["SYNTHESIS"] },
-    { state: "SYNTHESIS", desc: "Response assembly", next: ["IDLE"] },
+    { state: "BRIEF", desc: "Brief details, segment, placement, instructions, and category selected", next: ["RETRIEVE"] },
+    { state: "RETRIEVE", desc: "Seed images filtered by category, placement, metadata, and rights", next: ["GENERATE"] },
+    { state: "GENERATE", desc: "RAG-backed variants created with embedded seed-image preview", next: ["PREVIEW"] },
+    { state: "PREVIEW", desc: "Thumbnail expands for full creative inspection", next: ["ADAPT"] },
+    { state: "ADAPT", desc: "Resize, crop, inpaint, outpaint, and safe-area transforms tracked", next: ["REVIEW"] },
+    { state: "REVIEW", desc: "Policy, rights, regional, safety, and approval checks applied", next: ["EVALUATE"] },
+    { state: "EVALUATE", desc: "Approved variants scored against synthetic audiences", next: ["ACTIVATE"] },
+    { state: "ACTIVATE", desc: "Winning variants submitted and shown on Activation dashboard", next: ["LEARN"] },
+    { state: "LEARN", desc: "Ask AI and feedback improve future prompts and retrieval", next: ["BRIEF"] },
   ];
 
   const guardrails = [
-    { name: "PII Filter", type: "Input", desc: "Redact sensitive data before processing" },
-    { name: "Policy Guard", type: "Routing", desc: "Block unauthorized tool access" },
-    { name: "Hallucination Check", type: "Output", desc: "Verify claims against source data" },
-    { name: "Token Budget", type: "Resource", desc: "Cap context length per turn" },
+    { name: "Rights Scope", type: "Retrieval", desc: "Only approved usage contexts are eligible" },
+    { name: "Brand + Safety", type: "Policy", desc: "Generated and adapted creatives get review evidence" },
+    { name: "Approval Gate", type: "Status", desc: "Pending-review assets must be approved in Studio" },
+    { name: "State Retention", type: "Lakebase", desc: "Generation, approval, and activation changes persist across app updates" },
+    { name: "Lineage Required", type: "Audit", desc: "Request, prompt, model, source asset, preview reference, and transforms are retained" },
   ];
 
   return (
@@ -2814,9 +4609,10 @@ function AgentTopology({ data }: { data: AgencyData }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-violet-600">// AI SYSTEM DESIGN</p>
-            <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Multi-Agent Orchestration Architecture</h2>
+            <h2 className="mt-1 text-[22px] font-extrabold text-[var(--ink)]">Creative Workflow Topology</h2>
             <p className="mt-2 max-w-2xl text-[13px] text-[var(--muted)]">
-              Supervisor pattern with specialized sub-agents. Each agent has scoped tools, guardrails, and observability via MLflow tracing.
+              Specialized workflow services coordinate asset retrieval, endpoint-backed generation, policy review,
+              synthetic audience scoring, approval, channel activation, and feedback capture.
             </p>
           </div>
           <div className="hidden shrink-0 rounded-lg border border-violet-200 bg-white p-3 md:block">
@@ -2833,7 +4629,7 @@ function AgentTopology({ data }: { data: AgencyData }) {
           <div className="flex flex-col items-center">
             <div className="rounded-xl border-2 border-slate-800 bg-slate-800 p-4 text-center shadow-lg">
               <Bot size={24} className="mx-auto text-white" />
-              <p className="mt-2 text-[13px] font-bold text-white">Supervisor</p>
+              <p className="mt-2 text-[13px] font-bold text-white">Workflow API</p>
               <p className="text-[10px] text-slate-300">Orchestrator</p>
             </div>
             <div className="mt-2 h-8 w-0.5 bg-slate-300" />
@@ -2844,7 +4640,7 @@ function AgentTopology({ data }: { data: AgencyData }) {
             </div>
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-4 gap-3">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {agents.slice(1).map((agent) => (
             <div key={agent.id} className="rounded-lg border-2 p-3" style={{ borderColor: agent.color, background: `${agent.color}10` }}>
               <div className="flex items-center gap-2">
@@ -2882,19 +4678,21 @@ function AgentTopology({ data }: { data: AgencyData }) {
               <thead className="bg-emerald-100">
                 <tr>
                   <th className="px-2 py-1.5 text-left font-mono font-bold text-emerald-700">Tool</th>
-                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Genie</th>
-                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Scorer</th>
-                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Creative</th>
-                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Ops</th>
+                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Retrieve</th>
+                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Generate</th>
+                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Review</th>
+                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Judge</th>
+                  <th className="px-2 py-1.5 text-center font-mono font-bold text-emerald-700">Activate</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-emerald-100 font-mono">
                 {toolMatrix.map((row) => (
                   <tr key={row.tool}>
                     <td className="px-2 py-1.5 font-semibold">{row.tool}</td>
-                    <td className="px-2 py-1.5 text-center">{row.genie ? "✓" : "–"}</td>
-                    <td className="px-2 py-1.5 text-center">{row.scorer ? "✓" : "–"}</td>
-                    <td className="px-2 py-1.5 text-center">{row.creative ? "✓" : "–"}</td>
+                    <td className="px-2 py-1.5 text-center">{row.retriever ? "✓" : "-"}</td>
+                    <td className="px-2 py-1.5 text-center">{row.generator ? "✓" : "-"}</td>
+                    <td className="px-2 py-1.5 text-center">{row.reviewer ? "✓" : "-"}</td>
+                    <td className="px-2 py-1.5 text-center">{row.judge ? "✓" : "-"}</td>
                     <td className="px-2 py-1.5 text-center">{row.activation ? "✓" : "–"}</td>
                   </tr>
                 ))}
@@ -2959,11 +4757,13 @@ function AgentTopology({ data }: { data: AgencyData }) {
             <p className="font-mono text-[11px] font-bold uppercase text-blue-700">MLOps Integration</p>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            {[
-              { name: "MLflow Tracing", desc: "End-to-end request tracing", status: "Active" },
-              { name: "Experiment Tracking", desc: "Prompt/model versioning", status: "Active" },
-              { name: "Model Registry", desc: "Serving endpoint management", status: data.modelStatus.configured_endpoint ? "Configured" : "Pending" },
-              { name: "Evaluation", desc: "Quality metrics & evals", status: "Active" },
+              {[
+              { name: "Endpoint Config", desc: creativeEndpoint, status: data.modelStatus.configured_endpoint ? "Configured" : "Pending" },
+              { name: "Seed Image RAG", desc: "category, reference asset, thumbnail preview", status: "Active" },
+              { name: "Generation Metadata", desc: "prompt, model, invocation status", status: "Active" },
+              { name: "Lakebase State", desc: "requests, variants, approvals, activations", status: "Active" },
+              { name: "Lineage Tables", desc: "source asset, request, transforms", status: "Active" },
+              { name: "Evaluation Tables", desc: "synthetic audience ranks", status: "Active" },
             ].map((item) => (
               <div key={item.name} className="rounded-md border border-blue-200 bg-white p-2">
                 <div className="flex items-center justify-between">
@@ -2979,9 +4779,9 @@ function AgentTopology({ data }: { data: AgencyData }) {
             ))}
           </div>
           <div className="mt-3 rounded-md border border-blue-200 bg-white p-2">
-            <p className="font-mono text-[10px] font-bold text-blue-700">Observability Stack</p>
+            <p className="font-mono text-[10px] font-bold text-blue-700">Captured Workflow Evidence</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {["Traces", "Spans", "Latency", "Token count", "Error rate", "Feedback"].map((m) => (
+              {["Prompt", "Seed reference", "Model endpoint", "Invocation status", "Policy evidence", "Evaluation rank", "Activate event", "Prediction feedback"].map((m) => (
                 <span key={m} className="rounded bg-blue-100 px-1.5 py-0.5 font-mono text-[9px] text-blue-700">{m}</span>
               ))}
             </div>
@@ -3047,12 +4847,30 @@ function ArchitectureConnector({ dotted = false, delay = 0 }: { dotted?: boolean
   );
 }
 
-function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
+function EndToEndArchitectureDiagram({ endpoints, data }: { endpoints: string[]; data: AgencyData | null }) {
+  const creativeEndpoint = data?.modelStatus.creative_model_endpoint ?? data?.modelStatus.configured_endpoint ?? "databricks-gpt-5-mini";
+  const policyEndpoint = data?.modelStatus.policy_model_endpoint ?? creativeEndpoint;
+  const judgeEndpoint = data?.modelStatus.judge_model_endpoint ?? creativeEndpoint;
+  const generationMode = data?.modelStatus.creative_generation_mode ?? "model_endpoint";
   return (
     <div>
       <div className="mb-5 text-center">
-        <h2 className="text-[24px] font-extrabold text-[var(--ink)]">Marketing Intelligence Data Architecture</h2>
-        <p className="mt-2 text-[13px] font-semibold text-[var(--muted)]">Creative Command Center: end-to-end data and AI flow on Databricks</p>
+        <h2 className="text-[24px] font-extrabold text-[var(--ink)]">Creative Generation Data and AI Architecture</h2>
+        <p className="mt-2 text-[13px] font-semibold text-[var(--muted)]">Brief details, C360 traits, governed seed images, RAG retrieval, Lakebase state, Ask AI, and Activate on Databricks</p>
+      </div>
+
+      <div className="mb-5 grid gap-3 md:grid-cols-4">
+        {[
+          ["Mode", generationMode],
+          ["Creative Model", creativeEndpoint],
+          ["Policy Model", policyEndpoint],
+          ["Audience Judge", judgeEndpoint],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-[var(--line)] bg-white px-3 py-2.5">
+            <p className="text-[10px] font-bold uppercase text-[var(--faint)]">{label}</p>
+            <p className="mt-1 truncate font-mono text-[12px] font-semibold text-[var(--ink)]">{value}</p>
+          </div>
+        ))}
       </div>
 
       <div className="thin-scrollbar overflow-x-auto pb-2">
@@ -3129,14 +4947,14 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
             <div className="rounded-b-xl border-x border-b border-emerald-200 bg-emerald-50/25 p-4">
               <div className="grid h-full grid-rows-[1fr_auto_1fr] gap-4">
                 <div className="grid grid-cols-2 gap-3">
-                  {ARCH_SERVING_NODES.slice(0, 4).map((node, index) => (
+                  {ARCH_SERVING_NODES.slice(0, 5).map((node, index) => (
                     <ArchitectureCard key={node[0]} title={node[0]} subtitle={node[1]} tone="serving" delay={1.05 + index * 0.05} />
                   ))}
                 </div>
                 <div className="flex items-center justify-center">
                   <ArchitectureConnector dotted delay={1.25} />
                 </div>
-                <ArchitectureCard title={ARCH_SERVING_NODES[4][0]} subtitle={ARCH_SERVING_NODES[4][1]} tone="source" delay={1.32} />
+                <ArchitectureCard title={ARCH_SERVING_NODES[5][0]} subtitle={ARCH_SERVING_NODES[5][1]} tone="source" delay={1.32} />
               </div>
             </div>
           </div>
@@ -3144,8 +4962,8 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
           <motion.div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/45 p-4" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.05 }}>
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[13px] font-bold text-violet-900">Unity Catalog - Governance, Quality & Access Control</p>
-                <p className="mt-1 text-[11px] text-[var(--muted)]">Classification tags, masking policies, table constraints, lineage, and endpoint access boundaries.</p>
+                <p className="text-[13px] font-bold text-violet-900">Unity Catalog - Governance, Lineage and Reuse</p>
+                <p className="mt-1 text-[11px] text-[var(--muted)]">Audience traits, seed assets, generation requests, transformations, policy checks, evaluations, activations, Lakebase state, and feedback are governed.</p>
               </div>
               <span className="rounded-md border border-violet-200 bg-white px-2 py-1 font-mono text-[10px] font-semibold text-violet-700">governed</span>
             </div>
@@ -3163,10 +4981,10 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
               ))}
             </div>
             <div className="mt-3 grid gap-3 text-[11px] text-[var(--muted)] md:grid-cols-4">
-              <p><span className="font-semibold text-[var(--ink)]">PII masking</span><br />cohort identifiers, customer attributes</p>
-              <p><span className="font-semibold text-[var(--ink)]">DLT expectations</span><br />valid spend, valid CTR, valid market mapping</p>
-              <p><span className="font-semibold text-[var(--ink)]">Lineage</span><br />source to gold KPI traceability</p>
-              <p><span className="font-semibold text-[var(--ink)]">Access control</span><br />app, analyst, and operator views</p>
+              <p><span className="font-semibold text-[var(--ink)]">Rights scope</span><br />regions, channels, dates, and usage context</p>
+              <p><span className="font-semibold text-[var(--ink)]">Policy checks</span><br />brand, rights, regional usage, and safety</p>
+              <p><span className="font-semibold text-[var(--ink)]">Lineage</span><br />seed asset, prompt, model, request, preview, and transforms</p>
+              <p><span className="font-semibold text-[var(--ink)]">Reuse</span><br />approved variants, activations, and winning patterns</p>
             </div>
           </motion.div>
 
@@ -3203,10 +5021,11 @@ function EndToEndArchitectureDiagram({ endpoints }: { endpoints: string[] }) {
         </div>
 
         <div className="rounded-lg border border-[var(--line)] bg-white p-4">
-          <p className="text-[13px] font-semibold">Implementation path</p>
+          <p className="text-[13px] font-semibold">Current implementation</p>
           <div className="mt-3 space-y-2 text-[12px] leading-5 text-[var(--muted)]">
-            <p>Today the demo uses FastAPI JSON contracts and bundled CSV extracts. The architecture canvas shows the production path behind the same contracts.</p>
-            <p>Databricks tables, Genie, SQL Warehouse, and Lakebase can be added without changing the React command center surface.</p>
+            <p>The app reads Databricks workflow tables with CSV fallback and serves the same FastAPI JSON contracts to the React command center.</p>
+            <p>Generation uses category-filtered UC Volume seed images, Vector Search RAG references, embedded thumbnail previews, and Lakebase-backed state for live changes.</p>
+            <p>Generation, adaptation, policy checks, synthetic audience judging, and Ask AI use configurable Databricks services, with {creativeEndpoint} as the starter model.</p>
           </div>
         </div>
       </div>
@@ -3229,7 +5048,7 @@ function ArchitectureLaneHeader({ icon: Icon, title, subtitle, color }: { icon: 
 }
 
 function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { input, loading, messages, setInput, submit } = useAskAssistant();
+  const { input, loading, messages, setInput, submit, suggestions } = useAskAssistant();
 
   useEffect(() => {
     if (!open) return;
@@ -3262,7 +5081,7 @@ function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void })
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-[15px] font-bold">Ask Creative Command Center</p>
-                  <p className="truncate text-[12px] text-[var(--muted)]">Natural language workspace</p>
+                  <p className="truncate text-[12px] text-[var(--muted)]">Genie plus governed workflow answers</p>
                 </div>
               </div>
               <button
@@ -3276,8 +5095,8 @@ function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void })
 
             <div className="border-b border-[var(--line)] bg-[var(--panel-soft)]/70 p-4">
               <p className="mb-3 text-[11px] font-semibold uppercase text-[var(--faint)]">Suggested prompts</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {ASK_SUGGESTIONS.map((suggestion) => (
+              <div className="thin-scrollbar grid max-h-72 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {suggestions.map((suggestion) => (
                   <button
                     key={suggestion}
                     onClick={() => submit(suggestion)}
@@ -3293,7 +5112,7 @@ function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void })
             <AskMessageList
               messages={messages}
               loading={loading}
-              emptyText="Ask Creative Command Center about CTR, spend, activation status, creative quality, or ROI."
+              emptyText="Ask Creative Command Center about variants, policy checks, synthetic evaluations, lineage, or activation readiness."
               className="p-4"
             />
             <AskInputBar input={input} setInput={setInput} loading={loading} submit={submit} />
@@ -3305,7 +5124,7 @@ function AskSidePanel({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 function AskDesk() {
-  const { input, loading, messages, setInput, submit } = useAskAssistant();
+  const { input, loading, messages, setInput, submit, suggestions } = useAskAssistant();
 
   return (
     <div className="grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
@@ -3315,10 +5134,10 @@ function AskDesk() {
         </div>
         <h2 className="text-[22px] font-bold">Ask the activation desk</h2>
         <p className="mt-2 text-[13px] leading-6 text-[var(--muted)]">
-          The FastAPI endpoint returns structured tables now. It can be wired to Genie, SQL warehouse, or Lakebase without changing the React surface.
+          Ask AI tries the curated Databricks Genie space first, then returns governed Creative Command Center summaries for supported workflow questions.
         </p>
-        <div className="mt-6 grid gap-2">
-          {ASK_SUGGESTIONS.map((suggestion) => (
+        <div className="thin-scrollbar mt-6 grid max-h-[520px] gap-2 overflow-y-auto pr-1">
+          {suggestions.map((suggestion) => (
             <button
               key={suggestion}
               onClick={() => submit(suggestion)}
@@ -3335,7 +5154,7 @@ function AskDesk() {
         <AskMessageList
           messages={messages}
           loading={loading}
-          emptyText="Select a query or ask about CTR, activation status, creative quality, or ROI."
+          emptyText="Select a query or ask about variants, approval status, policy checks, synthetic evaluation, lineage, or activation readiness."
           className="p-4"
         />
         <AskInputBar input={input} setInput={setInput} loading={loading} submit={submit} />
@@ -3428,9 +5247,9 @@ function WorkSurface({
 
 function MetricMini({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-[11px] font-semibold uppercase text-[var(--faint)]">{label}</p>
-      <p className="mt-1 font-mono text-[17px] font-semibold">{value}</p>
+      <p className="mt-1 break-words font-mono text-[15px] font-semibold leading-tight">{value}</p>
     </div>
   );
 }

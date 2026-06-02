@@ -13,13 +13,28 @@ variables:
   app_name:
     description: Databricks App name. Override if this name already exists in the target workspace.
     default: creative-command-center-dev
+  creative_workflow_genie_space_id:
+    description: Genie Space ID used by Ask AI for the Creative Command Center workflow.
+    default: 01f15b4630bf18b483ee25bb3e20bd3d
+  creative_workflow_sql_warehouse_id:
+    description: SQL warehouse used by the app and Genie Space.
+    default: 8d3ba577483125f2
+  lakebase_instance_name:
+    description: Lakebase instance used for durable Creative Command Center app state.
+    default: creative-command-center-state-dev
 
 targets:
   dev:
     default: true
     variables:
       app_name: creative-command-center-dev
+      creative_workflow_genie_space_id: 01f15b4630bf18b483ee25bb3e20bd3d
+      creative_workflow_sql_warehouse_id: 8d3ba577483125f2
+      lakebase_instance_name: creative-command-center-state-dev
   prod:
     mode: production
     variables:
       app_name: creative-command-center
+      creative_workflow_genie_space_id: 01f15b4630bf18b483ee25bb3e20bd3d
+      creative_workflow_sql_warehouse_id: 8d3ba577483125f2
+      lakebase_instance_name: creative-command-center-state-dev

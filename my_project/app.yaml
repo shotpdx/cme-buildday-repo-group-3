@@ -8,6 +8,16 @@ env:
     value: sample_data
   - name: APP_DATA_SOURCE
     value: databricks
+  - name: APP_STATE_BACKEND
+    value: lakebase
+  - name: DB_CONNECTION_STRING
+    valueFrom: lakebase-state
+  - name: LAKEBASE_INSTANCE_NAME
+    value: creative-command-center-state-dev
+  - name: LAKEBASE_DATABASE_NAME
+    value: creative_command_center_state
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: creative-workflow-sql-wh
   - name: PIPELINE_CATALOG
     value: cme_outcomes_uswest
   - name: PIPELINE_SCHEMA
@@ -16,3 +26,31 @@ env:
     value: cme_outcomes_uswest
   - name: SOURCE_SCHEMA
     value: media_demo
+  - name: CREATIVE_GENERATION_MODE
+    value: model_endpoint
+  - name: CREATIVE_MODEL_ENDPOINT
+    value: databricks-gpt-5-mini
+  - name: CREATIVE_IMAGE_MODEL
+    value: seeded synthetic image assets
+  - name: CREATIVE_POLICY_MODEL_ENDPOINT
+    value: databricks-gpt-5-mini
+  - name: CREATIVE_JUDGE_MODEL_ENDPOINT
+    value: databricks-gpt-5-mini
+  - name: CREATIVE_ASSET_VOLUME
+    value: artifacts
+  - name: CREATIVE_ASSET_PREFIX
+    value: creative_assets
+  - name: CREATIVE_SEED_IMAGE_PATH
+    value: /Volumes/cme_outcomes_uswest/lakefoundry/artifacts/creative_assets/seed_images
+  - name: CREATIVE_VECTOR_SEARCH_ENDPOINT
+    value: creative-asset-search-dev
+  - name: CREATIVE_VECTOR_SEARCH_INDEX
+    value: cme_outcomes_uswest.lakefoundry.creative_asset_search_index
+  - name: ACTIVATION_DESTINATION_SYSTEM
+    value: onsite_personalization
+  - name: ASK_AI_BACKEND
+    value: genie
+  - name: GENIE_SPACE_ID
+    value: 01f15b4630bf18b483ee25bb3e20bd3d
+  - name: GENIE_TIMEOUT_SECONDS
+    value: "120"
