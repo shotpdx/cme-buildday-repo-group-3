@@ -3,11 +3,15 @@ import {
   Activity,
   ArrowRight,
   Bot,
+  BookOpen,
+  CheckCircle2,
   ChevronDown,
+  ChevronRight,
   CircleDollarSign,
   FileText,
   Filter,
   Gauge,
+  Info,
   Layers3,
   LineChart as LineChartIcon,
   MapPinned,
@@ -25,6 +29,7 @@ import {
   Users,
   Wand2,
   X,
+  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { geoAlbersUsa, geoPath } from "d3-geo";
@@ -333,6 +338,15 @@ type ActivationLineage = {
   policy_checks: PolicyCheck[];
   synthetic_evaluations: SyntheticEvaluation[];
   lineage_edges: CreativeLineageEdge[];
+  source_preview_uri?: string;
+  final_preview_uri?: string;
+  video_preview_uri?: string;
+  source_volume_url?: string;
+  approved_volume_url?: string;
+  generation_model?: string;
+  generation_model_id?: string;
+  brand_guideline_id?: string;
+  brand_guideline_version?: string;
 };
 
 type MarketCity = {
@@ -400,6 +414,76 @@ type ModelStatus = {
   checked_path: string;
   verified: boolean;
   evidence: string[];
+};
+
+type BrandGuideline = {
+  guideline_id: string;
+  brand_name: string;
+  profile_name: string;
+  version: string;
+  status: string;
+  tone: string;
+  headline_rules_json: string;
+  visual_rules_json: string;
+  color_tokens_json: string;
+  required_elements_json: string;
+  blocked_claims_json: string;
+  created_ts: string;
+  updated_ts: string;
+};
+
+type GenerationModel = {
+  model_id: string;
+  label: string;
+  provider: string;
+  endpoint_name: string;
+  modality: string;
+  default: boolean;
+  description: string;
+  latency_profile: string;
+  governance_note: string;
+};
+
+type EvaluationRubric = {
+  rubric_id: string;
+  name: string;
+  judge_model: string;
+  weights_json: string;
+  criteria_json: string;
+  created_ts: string;
+};
+
+type ScoreExplanation = {
+  explanation_id: string;
+  evaluation: SyntheticEvaluation;
+  creative_variant: CreativeVariant | null;
+  audience: Audience | null;
+  generation_request: CreativeGenerationRequest | null;
+  brand_guideline: BrandGuideline | null;
+  rubric: EvaluationRubric;
+  channel_matrix: {
+    evaluation_id: string;
+    creative_asset_id: string;
+    asset_name: string;
+    recommended_channel_id: string;
+    recommended_channel_label: string;
+    channels: Array<{
+      channel_id: string;
+      channel_label: string;
+      score: number;
+      projected_ctr: number;
+      projected_cpm: number;
+      projected_conversions: number;
+    }>;
+  };
+  model_settings: {
+    judge_model: string;
+    generation_model: string;
+    generation_model_id: string;
+    rubric_id: string;
+    score_source: string;
+  };
+  reasoning: string[];
 };
 
 type AgencyData = {
@@ -471,12 +555,20 @@ const GENIE_RECOMMENDED_QUESTIONS = [
 const PACING_WINDOWS = [7, 14, 30] as const;
 type PacingWindow = (typeof PACING_WINDOWS)[number];
 const PLACEMENT_OPTIONS = ["homepage_hero", "app_tile", "newsletter_banner", "social_square", "story_unit"];
+const VIDEO_PLACEMENT_OPTIONS = ["ctv_15s", "youtube_15s", "social_video_15s"];
 const PLACEMENT_DIMENSIONS: Record<string, string> = {
   homepage_hero: "1280x720",
   app_tile: "1080x1080",
   newsletter_banner: "1200x200",
   social_square: "1080x1080",
   story_unit: "1080x1920",
+  ctv_15s: "1920x1080",
+  youtube_15s: "1920x1080",
+  social_video_15s: "1080x1920",
+};
+const VIDEO_ORIENTATION_PLACEMENTS: Record<string, string> = {
+  horizontal: "youtube_15s",
+  vertical: "social_video_15s",
 };
 type ActivationChannel = {
   id: string;
@@ -2183,6 +2275,8 @@ function CreativeStudio({ data }: { data: AgencyData }) {
   const [query, setQuery] = useState("");
   const [selectedAssetType, setSelectedAssetType] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [contentType, setContentType] = useState<"image" | "video">("image");
+  const [videoOrientation, setVideoOrientation] = useState<"horizontal" | "vertical">("horizontal");
   const [instructions, setInstructions] = useState("Use audience traits to create a premium, placement-ready streaming creative.");
   const [selectedAssetId, setSelectedAssetId] = useState(data.creativeAssets[0]?.asset_id ?? "");
   const [generatedVariants, setGeneratedVariants] = useState<CreativeVariant[]>([]);
@@ -2203,12 +2297,43 @@ function CreativeStudio({ data }: { data: AgencyData }) {
   const [approvalMessage, setApprovalMessage] = useState("");
   const [approvalError, setApprovalError] = useState("");
   const [previewVariant, setPreviewVariant] = useState<CreativeVariant | null>(null);
+  const [brandGuidelines, setBrandGuidelines] = useState<BrandGuideline[]>([]);
+  const [generationModels, setGenerationModels] = useState<GenerationModel[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState("gpt-5-mini-balanced");
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareModelIds, setCompareModelIds] = useState<string[]>([]);
+  const [guidelinesExpanded, setGuidelinesExpanded] = useState(false);
 
   const selectedBrief = data.briefs.find((brief) => brief.brief_id === briefId) ?? data.briefs[0];
   const selectedAudience = data.audiences.find((audience) => audience.cohort_id === cohortId) ?? data.audiences[0];
   const trait = data.audienceTraits.find((item) => item.cohort_id === cohortId);
   const assetTypes = ["all", ...Array.from(new Set(data.creativeAssets.map((asset) => asset.asset_type.toLowerCase()).filter(Boolean)))];
   const imageModelLabel = data.modelStatus.creative_image_model ?? "seeded synthetic image assets";
+  const activeGuideline = brandGuidelines[0];
+  const selectedModel = generationModels.find((model) => model.model_id === selectedModelId) ?? generationModels[0];
+  const availableModels = generationModels.filter((model) => contentType === "video" ? model.modality === "video" : model.modality === "image");
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadEnhancements() {
+      try {
+        const [guidelines, models] = await Promise.all([
+          fetchJson<BrandGuideline[]>("/api/brand-guidelines"),
+          fetchJson<GenerationModel[]>("/api/generation-models"),
+        ]);
+        if (!ignore) {
+          setBrandGuidelines(guidelines);
+          setGenerationModels(models);
+          const defaultModel = models.find((model) => model.default);
+          if (defaultModel) setSelectedModelId(defaultModel.model_id);
+        }
+      } catch {
+        // Fallback: endpoints may not be available yet
+      }
+    }
+    loadEnhancements();
+    return () => { ignore = true; };
+  }, []);
 
   useEffect(() => {
     if (!previewVariant) return;
@@ -2218,6 +2343,16 @@ function CreativeStudio({ data }: { data: AgencyData }) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewVariant]);
+
+  useEffect(() => {
+    if (contentType === "video") {
+      const videoModel = generationModels.find((model) => model.modality === "video");
+      if (videoModel) setSelectedModelId(videoModel.model_id);
+    } else {
+      const imageModel = generationModels.find((model) => model.modality === "image" && model.default);
+      if (imageModel) setSelectedModelId(imageModel.model_id);
+    }
+  }, [contentType, generationModels]);
 
   function assetMatchesPlacement(asset: CreativeAsset, targetPlacement: string) {
     const normalizedPlacement = normalizeSearchText(targetPlacement);
@@ -2256,6 +2391,14 @@ function CreativeStudio({ data }: { data: AgencyData }) {
   }, [placement]);
 
   useEffect(() => {
+    if (contentType === "video") {
+      setPlacement(VIDEO_ORIENTATION_PLACEMENTS[videoOrientation]);
+    } else if (VIDEO_PLACEMENT_OPTIONS.includes(placement)) {
+      setPlacement("homepage_hero");
+    }
+  }, [contentType, videoOrientation]);
+
+  useEffect(() => {
     if (activeAssets.length && !activeAssets.some((asset) => asset.asset_id === selectedAssetId)) {
       setSelectedAssetId(activeAssets[0].asset_id);
     }
@@ -2264,10 +2407,15 @@ function CreativeStudio({ data }: { data: AgencyData }) {
   const allVariants = [...adaptedVariants, ...generatedVariants, ...data.creativeVariants].map(
     (variant) => approvalOverrides[variant.creative_asset_id] ?? variant,
   );
+  const sessionVariants = [...adaptedVariants, ...generatedVariants].map(
+    (variant) => approvalOverrides[variant.creative_asset_id] ?? variant,
+  );
   const variants = allVariants.filter(
     (variant) => (!cohortId || variant.cohort_id === cohortId) && (!placement || variant.placement === placement),
   );
-  const shownVariants = variants.slice(0, 8);
+  const shownVariants = sessionVariants
+    .filter((variant) => (!cohortId || variant.cohort_id === cohortId) && (!placement || variant.placement === placement))
+    .slice(0, 8);
   const sourceVariant = allVariants.find((variant) => variant.creative_asset_id === selectedVariantId) ?? shownVariants[0] ?? allVariants[0];
   const transformationLedger = [...liveTransformations, ...data.creativeTransformations]
     .filter((item) => !sourceVariant || item.creative_asset_id === sourceVariant.creative_asset_id || item.input_asset_id === sourceVariant.creative_asset_id)
@@ -2291,11 +2439,13 @@ function CreativeStudio({ data }: { data: AgencyData }) {
           cohort_id: cohortId,
           placement,
           category: selectedCategory === "all" ? selectedAsset?.demo_category ?? "" : selectedCategory,
-          content_type: "image",
+          content_type: contentType,
+          video_orientation: contentType === "video" ? videoOrientation : undefined,
+          aspect_ratio: contentType === "video" ? (videoOrientation === "horizontal" ? "16:9" : "9:16") : undefined,
           user_instructions: instructions,
           retrieval_query: query,
           selected_base_asset_ids: selectedAssetId ? [selectedAssetId] : [],
-          requested_variant_count: 4,
+          requested_variant_count: contentType === "video" ? 2 : 4,
         }),
       });
       if (!response.ok) throw new Error("Generation request failed");
@@ -2364,7 +2514,7 @@ function CreativeStudio({ data }: { data: AgencyData }) {
       <WorkSurface
         title="Creative studio"
         subtitle="Search governed assets, generate endpoint-backed variants, and adapt for onsite placements"
-        filters={["homepage_hero", "app_tile", "newsletter_banner", "social_square", "story_unit"]}
+        filters={contentType === "video" ? VIDEO_PLACEMENT_OPTIONS : PLACEMENT_OPTIONS}
         activeFilter={placement}
         onFilter={setPlacement}
       />
@@ -2402,6 +2552,96 @@ function CreativeStudio({ data }: { data: AgencyData }) {
               Text instructions
               <textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} className="min-h-[96px] rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[13px] leading-5 text-[var(--ink)]" />
             </label>
+            <div className="grid gap-1">
+              <span className="text-[12px] font-semibold text-[var(--muted)]">Content type</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setContentType("image")}
+                  className={`flex-1 rounded-md border px-3 py-2 text-[13px] font-bold transition-colors ${contentType === "image" ? "border-[var(--brand-accent)] bg-[var(--brand-primary)] text-white" : "border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)]"}`}
+                >
+                  Image
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContentType("video")}
+                  className={`flex-1 rounded-md border px-3 py-2 text-[13px] font-bold transition-colors ${contentType === "video" ? "border-[var(--brand-accent)] bg-[var(--brand-primary)] text-white" : "border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)]"}`}
+                >
+                  Video
+                </button>
+              </div>
+            </div>
+            {contentType === "video" ? (
+              <div className="grid gap-1">
+                <span className="text-[12px] font-semibold text-[var(--muted)]">Video orientation</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setVideoOrientation("horizontal")}
+                    className={`flex-1 rounded-md border px-3 py-2 text-[13px] font-bold transition-colors ${videoOrientation === "horizontal" ? "border-[var(--brand-accent)] bg-[var(--panel-soft)] text-[var(--ink)]" : "border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)]"}`}
+                  >
+                    Horizontal (16:9)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVideoOrientation("vertical")}
+                    className={`flex-1 rounded-md border px-3 py-2 text-[13px] font-bold transition-colors ${videoOrientation === "vertical" ? "border-[var(--brand-accent)] bg-[var(--panel-soft)] text-[var(--ink)]" : "border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)]"}`}
+                  >
+                    Vertical (9:16)
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {availableModels.length > 0 ? (
+              <div className="grid gap-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-semibold text-[var(--muted)]">Generation model</span>
+                  <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--faint)]">
+                    <input type="checkbox" checked={compareMode} onChange={(e) => setCompareMode(e.target.checked)} className="h-3 w-3" />
+                    Compare models
+                  </label>
+                </div>
+                {compareMode ? (
+                  <div className="grid gap-2">
+                    {availableModels.map((model) => (
+                      <label key={model.model_id} className={`flex items-center gap-2 rounded-md border px-3 py-2 text-[12px] transition-colors ${compareModelIds.includes(model.model_id) ? "border-[var(--brand-accent)] bg-[var(--panel-soft)]" : "border-[var(--line)] bg-white"}`}>
+                        <input
+                          type="checkbox"
+                          checked={compareModelIds.includes(model.model_id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setCompareModelIds((current) => [...current, model.model_id]);
+                            } else {
+                              setCompareModelIds((current) => current.filter((id) => id !== model.model_id));
+                            }
+                          }}
+                          className="h-3.5 w-3.5"
+                        />
+                        <div className="flex-1">
+                          <p className="font-bold text-[var(--ink)]">{model.label}</p>
+                          <p className="text-[11px] text-[var(--muted)]">{model.provider}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <select
+                    value={selectedModelId}
+                    onChange={(e) => setSelectedModelId(e.target.value)}
+                    className="rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[13px] text-[var(--ink)]"
+                  >
+                    {availableModels.map((model) => (
+                      <option key={model.model_id} value={model.model_id}>
+                        {model.label} {model.default ? "(Default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {selectedModel ? (
+                  <p className="text-[11px] leading-4 text-[var(--faint)]">{selectedModel.description}</p>
+                ) : null}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={generateVariants}
@@ -2409,7 +2649,7 @@ function CreativeStudio({ data }: { data: AgencyData }) {
               className="inline-flex items-center justify-center gap-2 rounded-md bg-[var(--brand-primary)] px-4 py-2 text-[13px] font-bold text-white shadow-lg shadow-sky-900/15 disabled:opacity-60"
             >
               <Sparkles size={16} />
-              {isGenerating ? "Generating" : "Generate 4 Variants"}
+              {isGenerating ? "Generating" : `Generate ${contentType === "video" ? "2" : "4"} Variants`}
             </button>
           </div>
           <div className="mt-4 rounded-md border border-[var(--line)] bg-[var(--panel-soft)] p-3">
@@ -2423,6 +2663,82 @@ function CreativeStudio({ data }: { data: AgencyData }) {
               {trait ? <span className="rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-[var(--muted)]">stage: {trait.lifecycle_stage}</span> : null}
             </div>
           </div>
+          {activeGuideline ? (
+            <div className="mt-3 rounded-md border border-[var(--line)] bg-white p-3">
+              <button
+                type="button"
+                onClick={() => setGuidelinesExpanded((current) => !current)}
+                className="flex w-full items-center justify-between text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <BookOpen size={14} className="text-[var(--brand-primary)]" />
+                  <span className="text-[11px] font-bold uppercase text-[var(--faint)]">Brand Guidelines</span>
+                </div>
+                <ChevronDown size={14} className={`text-[var(--muted)] transition-transform ${guidelinesExpanded ? "rotate-180" : ""}`} />
+              </button>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[13px] font-bold text-[var(--ink)]">{activeGuideline.brand_name}</span>
+                <span className="rounded bg-[var(--panel-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--muted)]">v{activeGuideline.version}</span>
+              </div>
+              <p className="mt-1 text-[12px] text-[var(--muted)]">{activeGuideline.tone}</p>
+              {guidelinesExpanded ? (
+                <div className="mt-3 space-y-3 border-t border-[var(--line)] pt-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-[var(--faint)]">Color Palette</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {Object.entries(parseJsonObject(activeGuideline.color_tokens_json)).map(([name, hex]) => (
+                        <div key={name} className="flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-[var(--panel-soft)] px-2 py-1">
+                          <span className="h-3 w-3 rounded-sm border border-white/20" style={{ backgroundColor: String(hex) }} />
+                          <span className="text-[11px] font-semibold text-[var(--muted)]">{name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-[var(--faint)]">Required Elements</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {parseJsonList(activeGuideline.required_elements_json).map((item) => (
+                        <span key={item} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                          <CheckCircle2 size={10} />
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-[var(--faint)]">Blocked Claims</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {parseJsonList(activeGuideline.blocked_claims_json).map((item) => (
+                        <span key={item} className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700">{item}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-[var(--faint)]">Headline Rules</p>
+                    <ul className="mt-1.5 space-y-1">
+                      {parseJsonList(activeGuideline.headline_rules_json).map((rule, index) => (
+                        <li key={index} className="flex items-start gap-2 text-[11px] leading-4 text-[var(--muted)]">
+                          <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-[var(--muted)]" />
+                          {rule}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-[var(--faint)]">Visual Rules</p>
+                    <ul className="mt-1.5 space-y-1">
+                      {parseJsonList(activeGuideline.visual_rules_json).map((rule, index) => (
+                        <li key={index} className="flex items-start gap-2 text-[11px] leading-4 text-[var(--muted)]">
+                          <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-[var(--muted)]" />
+                          {rule}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-3 grid gap-2 rounded-md border border-[var(--line)] bg-white p-3 sm:grid-cols-2">
             <MetricMini label="Creative endpoint" value={data.modelStatus.creative_model_endpoint ?? data.modelStatus.configured_endpoint ?? "N/A"} />
             <MetricMini label="Image model/source" value={imageModelLabel} />
@@ -2708,6 +3024,8 @@ function Evaluation({
   const [multiChannel, setMultiChannel] = useState(false);
   const [channelSelections, setChannelSelections] = useState<Record<string, string[]>>({});
   const [activatingId, setActivatingId] = useState("");
+  const [scoreExplanation, setScoreExplanation] = useState<ScoreExplanation | null>(null);
+  const [scoreExplanationLoading, setScoreExplanationLoading] = useState("");
   const approvedVariantIds = new Set(
     data.creativeVariants
       .filter((variant) => variant.approval_status === "Approved")
@@ -2784,6 +3102,18 @@ function Evaluation({
       setActivationError(err instanceof Error ? err.message : "Activation failed");
     } finally {
       setActivatingId("");
+    }
+  }
+
+  async function openScoreExplanation(evaluationId: string) {
+    setScoreExplanationLoading(evaluationId);
+    try {
+      const explanation = await fetchJson<ScoreExplanation>(`/api/synthetic-evaluations/${encodeURIComponent(evaluationId)}/score-explanation`);
+      setScoreExplanation(explanation);
+    } catch {
+      setActivationError("Failed to load score explanation");
+    } finally {
+      setScoreExplanationLoading("");
     }
   }
 
@@ -2904,15 +3234,26 @@ function Evaluation({
                       <p className="mt-2 text-[11px] leading-4 text-[var(--faint)]">Recommended: {recommended.channel.label}</p>
                     </td>
                     <td className="px-4 py-4">
-                      <button
-                        type="button"
-                        disabled={blocked || !approved || activatingId === evaluation.evaluation_id}
-                        onClick={() => activateVariant(evaluation)}
-                        className="inline-flex items-center gap-2 rounded-md bg-[var(--brand-primary)] px-3 py-2 text-[12px] font-bold text-white disabled:bg-slate-200 disabled:text-slate-500"
-                      >
-                        <Send size={14} />
-                        {activatingId === evaluation.evaluation_id ? "Activating" : "Activate"}
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          disabled={blocked || !approved || activatingId === evaluation.evaluation_id}
+                          onClick={() => activateVariant(evaluation)}
+                          className="inline-flex items-center gap-2 rounded-md bg-[var(--brand-primary)] px-3 py-2 text-[12px] font-bold text-white disabled:bg-slate-200 disabled:text-slate-500"
+                        >
+                          <Send size={14} />
+                          {activatingId === evaluation.evaluation_id ? "Activating" : "Activate"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openScoreExplanation(evaluation.evaluation_id)}
+                          disabled={scoreExplanationLoading === evaluation.evaluation_id}
+                          className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-bold text-[var(--ink)] hover:bg-[var(--panel-soft)] disabled:opacity-50"
+                        >
+                          <Info size={14} />
+                          {scoreExplanationLoading === evaluation.evaluation_id ? "Loading..." : "Score Details"}
+                        </button>
+                      </div>
                       {blocked ? <p className="mt-2 text-[11px] font-semibold text-[var(--red)]">Blocked by checks</p> : null}
                     </td>
                   </tr>
@@ -2929,6 +3270,161 @@ function Evaluation({
           </table>
         </div>
       </Panel>
+      {scoreExplanation ? <ScoreExplanationModal explanation={scoreExplanation} onClose={() => setScoreExplanation(null)} /> : null}
+    </div>
+  );
+}
+
+function ScoreExplanationModal({ explanation, onClose }: { explanation: ScoreExplanation; onClose: () => void }) {
+  const criteria = parseJsonList(explanation.rubric?.criteria_json);
+  const evaluation = explanation.evaluation;
+  const variant = explanation.creative_variant;
+  const guideline = explanation.brand_guideline;
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071523]/82 p-4">
+      <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close score explanation" />
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-4 border-b border-[var(--line)] px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Evaluation Criteria</p>
+            <h2 className="truncate text-[18px] font-bold text-[var(--ink)]">
+              {variant?.asset_name ?? evaluation.creative_asset_id}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--line)] bg-white text-[var(--muted)] hover:text-[var(--ink)]"
+            aria-label="Close"
+            title="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="thin-scrollbar overflow-y-auto p-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+                <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Judge Model</p>
+                <p className="mt-1 text-[14px] font-bold text-[var(--ink)]">{explanation.model_settings.judge_model}</p>
+                <p className="mt-2 text-[12px] text-[var(--muted)]">
+                  Generation: {explanation.model_settings.generation_model}
+                </p>
+                <p className="text-[12px] text-[var(--muted)]">
+                  Rubric: {explanation.rubric?.rubric_id}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+                <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Overall Score</p>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-[32px] font-bold text-[var(--brand-primary)]">{evaluation.overall_score}</span>
+                  <span className="text-[14px] text-[var(--muted)]">/ 100</span>
+                </div>
+                <p className="mt-1 text-[12px] text-[var(--muted)]">
+                  Rank #{evaluation.rank_within_segment_placement} for {labelize(evaluation.placement)}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+                <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Scoring Dimensions</p>
+                <div className="mt-3 space-y-2">
+                  {[
+                    { label: "Click Propensity", value: evaluation.click_propensity_score, weightLabel: "18%" },
+                    { label: "Brand Fit", value: evaluation.brand_fit_score, weightLabel: "14%" },
+                    { label: "Relevance", value: evaluation.relevance_score, weightLabel: "" },
+                    { label: "Clarity", value: evaluation.clarity_score, weightLabel: "" },
+                    { label: "Fatigue Risk", value: evaluation.fatigue_risk_score, inverse: true, weightLabel: "10%" },
+                    { label: "Dwell Time", value: evaluation.expected_dwell_time_score, weightLabel: "" },
+                  ].map((dimension) => (
+                    <div key={dimension.label} className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12px] font-semibold text-[var(--ink)]">{dimension.label}</span>
+                        {dimension.weightLabel ? (
+                          <span className="rounded bg-[var(--panel-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--muted)]">
+                            {dimension.weightLabel}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-24 overflow-hidden rounded-full bg-[var(--panel-soft)]">
+                          <div
+                            className={`h-full rounded-full ${dimension.inverse ? "bg-amber-500" : "bg-[var(--brand-primary)]"}`}
+                            style={{ width: `${dimension.value}%` }}
+                          />
+                        </div>
+                        <span className="w-8 text-right font-mono text-[12px] font-bold text-[var(--ink)]">{dimension.value}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+                <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Channel Recommendation</p>
+                <p className="mt-2 text-[14px] font-bold text-[var(--ink)]">
+                  {explanation.channel_matrix?.recommended_channel_label ?? "N/A"}
+                </p>
+                <div className="mt-3 space-y-2">
+                  {(explanation.channel_matrix?.channels ?? []).slice(0, 4).map((channel) => (
+                    <div key={channel.channel_id} className="flex items-center justify-between rounded-md border border-[var(--line)] bg-[var(--panel-soft)]/50 px-3 py-2">
+                      <span className="text-[12px] font-semibold text-[var(--ink)]">{channel.channel_label}</span>
+                      <div className="flex items-center gap-3 text-[11px]">
+                        <span className="font-mono font-bold text-[var(--brand-primary)]">{channel.score}</span>
+                        <span className="text-[var(--muted)]">{channel.projected_ctr?.toFixed(2)}% CTR</span>
+                        <span className="text-[var(--muted)]">${channel.projected_cpm?.toFixed(2)} CPM</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {guideline ? (
+                <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+                  <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Brand Guideline Applied</p>
+                  <p className="mt-1 text-[13px] font-bold text-[var(--ink)]">{guideline.brand_name}</p>
+                  <p className="text-[12px] text-[var(--muted)]">Version: {guideline.version}</p>
+                </div>
+              ) : null}
+
+              <div className="rounded-lg border border-[var(--line)] bg-white p-4">
+                <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Evaluation Criteria</p>
+                <ul className="mt-2 space-y-1.5">
+                  {criteria.map((criterion, index) => (
+                    <li key={index} className="flex items-start gap-2 text-[12px] leading-5 text-[var(--muted)]">
+                      <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-[var(--green)]" />
+                      {criterion}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-soft)] p-4">
+                <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Score Reasoning</p>
+                <ul className="mt-2 space-y-1.5">
+                  {explanation.reasoning.map((reason, index) => (
+                    <li key={index} className="flex items-start gap-2 text-[12px] leading-5 text-[var(--muted)]">
+                      <ChevronRight size={12} className="mt-1 shrink-0 text-[var(--brand-primary)]" />
+                      {reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3199,6 +3695,7 @@ function ActivationLineageModal({ lineage, onClose }: { lineage: ActivationLinea
   const primarySteps = lineage.steps.filter((step) => primaryEntityTypes.includes(step.entity_type));
   const supportSteps = lineage.steps.filter((step) => !primaryEntityTypes.includes(step.entity_type));
   const policyIssues = lineage.policy_checks.filter((check) => check.check_status.toLowerCase() !== "pass" || check.review_required);
+  const hasAssetPreviews = lineage.source_preview_uri || lineage.final_preview_uri;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071523]/82 p-4">
       <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close activation lineage" />
@@ -3221,6 +3718,73 @@ function ActivationLineageModal({ lineage, onClose }: { lineage: ActivationLinea
           </button>
         </div>
         <div className="thin-scrollbar overflow-y-auto p-4">
+          {hasAssetPreviews ? (
+            <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--panel-soft)]/50 p-4">
+              <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Asset Provenance</p>
+              <div className="mt-3 grid gap-4 md:grid-cols-2">
+                {lineage.source_preview_uri ? (
+                  <div className="rounded-lg border border-[var(--line)] bg-white p-3">
+                    <p className="text-[10px] font-bold uppercase text-[var(--faint)]">Source Asset</p>
+                    <img src={lineage.source_preview_uri} alt="Source asset" className="mt-2 h-32 w-full rounded-md bg-[var(--panel-soft)] object-contain" />
+                    {lineage.reference_asset ? (
+                      <p className="mt-2 text-[12px] font-semibold text-[var(--ink)]">{lineage.reference_asset.asset_name}</p>
+                    ) : null}
+                    {lineage.source_volume_url ? (
+                      <p className="mt-1 truncate font-mono text-[10px] text-[var(--muted)]" title={lineage.source_volume_url}>
+                        {lineage.source_volume_url}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {lineage.final_preview_uri ? (
+                  <div className="rounded-lg border border-[var(--line)] bg-white p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold uppercase text-[var(--faint)]">Final Asset</p>
+                      {lineage.source_preview_uri ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                          <ArrowRight size={10} />
+                          Transformed
+                        </span>
+                      ) : null}
+                    </div>
+                    {lineage.video_preview_uri ? (
+                      <video src={lineage.video_preview_uri} controls className="mt-2 h-32 w-full rounded-md bg-[var(--panel-soft)] object-contain" />
+                    ) : (
+                      <img src={lineage.final_preview_uri} alt="Final asset" className="mt-2 h-32 w-full rounded-md bg-[var(--panel-soft)] object-contain" />
+                    )}
+                    {lineage.creative_variant ? (
+                      <p className="mt-2 text-[12px] font-semibold text-[var(--ink)]">{lineage.creative_variant.asset_name}</p>
+                    ) : null}
+                    {lineage.approved_volume_url ? (
+                      <p className="mt-1 truncate font-mono text-[10px] text-[var(--muted)]" title={lineage.approved_volume_url}>
+                        {lineage.approved_volume_url}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              {(lineage.generation_model || lineage.brand_guideline_id) ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {lineage.generation_model ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-2 py-1 text-[11px]">
+                      <Zap size={12} className="text-[var(--brand-primary)]" />
+                      <span className="text-[var(--faint)]">Model:</span>
+                      <span className="font-semibold text-[var(--ink)]">{lineage.generation_model}</span>
+                    </span>
+                  ) : null}
+                  {lineage.brand_guideline_id ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-white px-2 py-1 text-[11px]">
+                      <BookOpen size={12} className="text-[var(--brand-primary)]" />
+                      <span className="text-[var(--faint)]">Guideline:</span>
+                      <span className="font-semibold text-[var(--ink)]">{lineage.brand_guideline_id}</span>
+                      {lineage.brand_guideline_version ? <span className="text-[var(--muted)]">v{lineage.brand_guideline_version}</span> : null}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="grid gap-3 lg:grid-cols-5">
             {primarySteps.map((step, index) => (
               <div key={`${step.entity_type}-${step.entity_id}`} className="relative rounded-lg border border-[var(--line)] bg-white p-3">

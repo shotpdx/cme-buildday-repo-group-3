@@ -1,0 +1,25 @@
+Task mode: create
+Primary profile: product-platform
+Secondary gates: gtm-growth, engineering-platform
+
+Source inputs:
+- README.md
+- my_project/README.md
+- docs/specs/spec_id=creative-generation-workflow-enhancements/implementation_plan.md
+- docs/specs/spec_id=2026-06-01-gemini-creative-gen-demo-enhancements/implementation_plan.md
+- databricks.yml
+- my_project/app/main.py
+- my_project/src/App.tsx
+
+Current solution summary:
+The repository implements a CME Build Day Creative Command Center solution for buy-side campaign workflows. It includes a React + FastAPI Databricks App, Databricks Asset Bundle configuration, Lakeflow pipeline resources, gold-layer buyside tables, CSV fallback data, governed creative generation flows, policy and synthetic evaluation surfaces, activation lineage, and Genie/Ask AI decision support. The app can read Databricks SQL pipeline tables or fall back to local CSV extracts.
+
+Important implementation facts used in the one-pager:
+- Customer 360 foundation uses cme_outcomes_uswest.media_demo source tables and generated cme_outcomes_uswest.lakefoundry gold_buyside_* tables.
+- The app includes Overview, Briefs, Audiences, Creative Studio, Evaluation, Activations, Markets, Ask AI, and architecture views.
+- Creative workflows support brief/audience selection, governed asset retrieval, image/video generation options, transformations, brand guideline context, variant approval, synthetic evaluation, policy checks, activation exports, and lineage.
+- Databricks platform components include Databricks Apps, Lakeflow pipelines, Unity Catalog, Delta tables, Vector Search, Model Serving / Foundation Model endpoints, Genie, and Lakebase-style state persistence.
+
+Brand asset policy:
+- No official Slalom or Databricks logo files were present in the repo.
+- The one-pager uses plain text "Slalom + Databricks" as a textual partnership cue, not reconstructed logo artwork.

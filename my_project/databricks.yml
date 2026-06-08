@@ -1,7 +1,6 @@
-# Databricks Asset Bundle for the self-contained Creative Command Center app.
-# The default deployment creates the Databricks App and ships CSV extracts under
-# sample_data/ so the backend tables are available without workspace-specific
-# catalogs, schemas, SQL warehouses, or source tables.
+# Databricks Asset Bundle for the Creative Command Center app.
+# The dev deployment points the backend at the verified UC tables in
+# fs_dev_gold.creative_command_center through a Databricks SQL warehouse.
 bundle:
   name: creative-command-center
   uuid: 82d5ee1f-d361-41a7-821f-ea8c9af061c5
@@ -18,10 +17,7 @@ variables:
     default: 01f15b4630bf18b483ee25bb3e20bd3d
   creative_workflow_sql_warehouse_id:
     description: SQL warehouse used by the app and Genie Space.
-    default: 8d3ba577483125f2
-  lakebase_instance_name:
-    description: Lakebase instance used for durable Creative Command Center app state.
-    default: creative-command-center-state-dev
+    default: d24059778e957e41
 
 targets:
   dev:
@@ -29,12 +25,10 @@ targets:
     variables:
       app_name: creative-command-center-dev
       creative_workflow_genie_space_id: 01f15b4630bf18b483ee25bb3e20bd3d
-      creative_workflow_sql_warehouse_id: 8d3ba577483125f2
-      lakebase_instance_name: creative-command-center-state-dev
+      creative_workflow_sql_warehouse_id: d24059778e957e41
   prod:
     mode: production
     variables:
       app_name: creative-command-center
       creative_workflow_genie_space_id: 01f15b4630bf18b483ee25bb3e20bd3d
-      creative_workflow_sql_warehouse_id: 8d3ba577483125f2
-      lakebase_instance_name: creative-command-center-state-dev
+      creative_workflow_sql_warehouse_id: d24059778e957e41

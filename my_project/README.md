@@ -2,7 +2,7 @@
 
 Databricks App demo with a FastAPI backend and Vite/React frontend. The backend can read Databricks SQL pipeline tables and falls back to bundled CSV extracts when workspace grants or tables are unavailable.
 
-The app deployment sets `APP_DATA_SOURCE=databricks` and targets `cme_outcomes_uswest.lakefoundry` for generated buyside pipeline tables plus `cme_outcomes_uswest.media_demo` for source briefs. FastAPI serves same-origin `/api/*` routes and exposes backend-table metadata through `/api/backend-tables`, including any per-table fallback errors.
+The dev app deployment sets `APP_DATA_SOURCE=databricks` and targets `fs_dev_gold.creative_command_center` for generated buyside workflow tables, dashboard/reference tables, creative asset volume paths, and source briefs. FastAPI serves same-origin `/api/*` routes and exposes backend-table metadata through `/api/backend-tables`, including any per-table fallback errors.
 
 The Audience lens does not call a real Databricks Model Serving endpoint in this branch. The app verifies that explicitly through `/api/model-status`; a production integration can add a serving endpoint behind the same API boundary later.
 
@@ -36,6 +36,27 @@ databricks bundle run creative_command_center -t dev --var app_name=my-creative-
 ```
 
 The app bundle deploys only the Databricks App resource in `resources/creative_command_center.app.yml`. The app source path includes `sample_data/`, so the CSV extracts deploy with the app. The full buyside pipeline is deployed from the repository root bundle.
+
+## Unity Catalog External Lineage
+
+The app can publish Databricks Bring Your Own Lineage metadata for approved creative variants. When `UC_EXTERNAL_LINEAGE_ENABLED=true`, approval writes an external metadata node such as `creative_generation_job_VAR_000123` and creates lineage relationships:
+
+`base image path -> creative generation job -> final approved image path -> gold_buyside_creative_variant`
+
+This is best-effort and does not block creative approval. If the workspace has not enabled the public preview or the app principal lacks privileges, the approval response includes the lineage error under `approval.uc_external_lineage`.
+
+Required workspace privileges:
+
+- `CREATE EXTERNAL METADATA` on the metastore for the app principal.
+- `MODIFY` on the external metadata object for updates or repeated publication.
+- `READ_VOLUME` / `WRITE_VOLUME` on `fs_dev_gold.creative_command_center.artifacts`.
+- `SELECT` on `fs_dev_gold.creative_command_center.gold_buyside_creative_variant`.
+
+You can re-run lineage publication for an already-approved creative:
+
+```bash
+curl -X POST "$APP_URL/api/creative-variants/<creative_asset_id>/uc-external-lineage"
+```
 
 ## Local Development
 

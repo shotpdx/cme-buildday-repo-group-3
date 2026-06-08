@@ -1,0 +1,28 @@
+{
+  "output": "/Users/pragathi.sharma/Repo/Github/cme-buildday-repo-group-3/outputs/manual-20260604-065033-cme/presentations/creative-command-center-one-pager/output/creative-command-center-one-pager.pptx",
+  "outputBytes": 20017,
+  "slideCount": 1,
+  "slideSize": {
+    "width": 1280,
+    "height": 720
+  },
+  "previewDir": "/Users/pragathi.sharma/Repo/Github/cme-buildday-repo-group-3/outputs/manual-20260604-065033-cme/presentations/creative-command-center-one-pager/preview",
+  "previewPaths": [
+    "/Users/pragathi.sharma/Repo/Github/cme-buildday-repo-group-3/outputs/manual-20260604-065033-cme/presentations/creative-command-center-one-pager/preview/slide-01.png"
+  ],
+  "layoutDir": "/Users/pragathi.sharma/Repo/Github/cme-buildday-repo-group-3/outputs/manual-20260604-065033-cme/presentations/creative-command-center-one-pager/layout/final",
+  "layoutResults": [
+    {
+      "layoutPath": "/Users/pragathi.sharma/Repo/Github/cme-buildday-repo-group-3/outputs/manual-20260604-065033-cme/presentations/creative-command-center-one-pager/layout/final/slide-01.layout.json"
+    }
+  ],
+  "contactSheet": "/Users/pragathi.sharma/Repo/Github/cme-buildday-repo-group-3/outputs/manual-20260604-065033-cme/presentations/creative-command-center-one-pager/preview/contact-sheet.png",
+  "slides": [
+    {
+      "index": 1,
+      "requestedSlideNumber": 1,
+      "modulePath": "/Users/pragathi.sharma/Repo/Github/cme-buildday-repo-group-3/outputs/manual-20260604-065033-cme/presentations/creative-command-center-one-pager/slides/slide-01.mjs",
+      "exportName": "slide01"
+    }
+  ]
+}

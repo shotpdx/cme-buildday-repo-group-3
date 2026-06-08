@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import base64
 import csv
+import io
 import json
 import mimetypes
 import time
@@ -12,6 +13,7 @@ from functools import lru_cache
 from html import escape
 from pathlib import Path
 from typing import Any, Callable, Optional
+from urllib.parse import quote
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -23,6 +25,13 @@ from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
+DEMO_VIDEO_ASSET_DIR = Path(os.getenv("DEMO_VIDEO_ASSET_DIR", ROOT / "app" / "video_assets"))
+if not DEMO_VIDEO_ASSET_DIR.is_absolute():
+    DEMO_VIDEO_ASSET_DIR = ROOT / DEMO_VIDEO_ASSET_DIR
+DEMO_VIDEO_ASSET = DEMO_VIDEO_ASSET_DIR / "demo_end_card_preview.mp4"
+DEMO_VIDEO_SEED_DIR = Path(os.getenv("DEMO_VIDEO_SEED_DIR", DEMO_VIDEO_ASSET_DIR / "seeds"))
+if not DEMO_VIDEO_SEED_DIR.is_absolute():
+    DEMO_VIDEO_SEED_DIR = ROOT / DEMO_VIDEO_SEED_DIR
 SAMPLE_DATA_DIR = Path(os.getenv("SAMPLE_DATA_DIR", "sample_data"))
 if not SAMPLE_DATA_DIR.is_absolute():
     SAMPLE_DATA_DIR = ROOT / SAMPLE_DATA_DIR
@@ -51,8 +60,9 @@ CREATIVE_JUDGE_MODEL_ENDPOINT = os.getenv("CREATIVE_JUDGE_MODEL_ENDPOINT", CREAT
 CREATIVE_POLICY_MODEL_ENDPOINT = os.getenv("CREATIVE_POLICY_MODEL_ENDPOINT", CREATIVE_MODEL_ENDPOINT).strip()
 CREATIVE_IMAGE_MODEL = os.getenv("CREATIVE_IMAGE_MODEL", "seeded synthetic image assets").strip()
 CREATIVE_MODEL_ENDPOINT_TIMEOUT_SECONDS = float(os.getenv("CREATIVE_MODEL_ENDPOINT_TIMEOUT_SECONDS", "6"))
-CREATIVE_ASSET_VOLUME = os.getenv("CREATIVE_ASSET_VOLUME", "creative_assets")
-CREATIVE_ASSET_PREFIX = os.getenv("CREATIVE_ASSET_PREFIX", "").strip().strip("/")
+CREATIVE_ASSET_VOLUME = os.getenv("CREATIVE_ASSET_VOLUME", "artifacts")
+CREATIVE_ASSET_PREFIX = os.getenv("CREATIVE_ASSET_PREFIX", "creative_assets").strip().strip("/")
+CREATIVE_APPROVED_ASSET_PREFIX = os.getenv("CREATIVE_APPROVED_ASSET_PREFIX", "approved").strip().strip("/")
 CREATIVE_SEED_IMAGE_PATH = os.getenv("CREATIVE_SEED_IMAGE_PATH", "").strip()
 CREATIVE_VECTOR_SEARCH_ENDPOINT = os.getenv("CREATIVE_VECTOR_SEARCH_ENDPOINT", "creative-asset-search-dev")
 CREATIVE_VECTOR_SEARCH_INDEX = os.getenv(
@@ -66,8 +76,22 @@ LAKEBASE_DATABASE_NAME = os.getenv("LAKEBASE_DATABASE_NAME", os.getenv("PGDATABA
 ASK_AI_BACKEND = os.getenv("ASK_AI_BACKEND", "genie").strip().lower()
 GENIE_SPACE_ID = os.getenv("GENIE_SPACE_ID", "").strip()
 GENIE_TIMEOUT_SECONDS = int(float(os.getenv("GENIE_TIMEOUT_SECONDS", "120")))
+UC_EXTERNAL_LINEAGE_ENABLED = os.getenv("UC_EXTERNAL_LINEAGE_ENABLED", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "y",
+}
+UC_EXTERNAL_LINEAGE_SYSTEM_TYPE = os.getenv("UC_EXTERNAL_LINEAGE_SYSTEM_TYPE", "DATABRICKS").strip() or "DATABRICKS"
+UC_EXTERNAL_LINEAGE_ENTITY_TYPE = os.getenv("UC_EXTERNAL_LINEAGE_ENTITY_TYPE", "CreativeGenerationJob").strip() or "CreativeGenerationJob"
+UC_EXTERNAL_LINEAGE_TARGET_TABLE = os.getenv("UC_EXTERNAL_LINEAGE_TARGET_TABLE", "gold_buyside_creative_variant").strip()
 
 GENIE_RECOMMENDED_QUESTIONS_FALLBACK = [
+    "Which of these creatives is most likely to resonate with boomers in the Midwest?",
+    "How is creative VAR-000011 performing against Live Sports Loyalists?",
+    "Which creative performs best for millennials versus boomers?",
+    "Which generated variant has the strongest purchase intent signal?",
+    "Which generation model produced the strongest approved creative?",
     "Which base creative assets are approved for homepage hero placements for sports audiences?",
     "Which policy checks are blocked, warning, or require review, and what evidence was recorded?",
     "Which pending review variants are missing policy checks or synthetic audience evaluations?",
@@ -123,6 +147,30 @@ PLACEMENT_SPECS: dict[str, dict[str, Any]] = {
         "channels": ["social", "app"],
         "safe_area": {"x_pct": 8, "y_pct": 16, "width_pct": 78, "height_pct": 58},
     },
+    "ctv_15s": {
+        "label": "CTV 15s end card",
+        "aspect_ratio": "16:9",
+        "width_px": 1920,
+        "height_px": 1080,
+        "channels": ["ctv", "video", "programmatic"],
+        "safe_area": {"x_pct": 9, "y_pct": 14, "width_pct": 54, "height_pct": 46},
+    },
+    "youtube_15s": {
+        "label": "YouTube 15s end card",
+        "aspect_ratio": "16:9",
+        "width_px": 1920,
+        "height_px": 1080,
+        "channels": ["social_video", "video", "programmatic"],
+        "safe_area": {"x_pct": 8, "y_pct": 14, "width_pct": 58, "height_pct": 48},
+    },
+    "social_video_15s": {
+        "label": "Social video 15s end card",
+        "aspect_ratio": "9:16",
+        "width_px": 1080,
+        "height_px": 1920,
+        "channels": ["social_video", "app"],
+        "safe_area": {"x_pct": 8, "y_pct": 18, "width_pct": 78, "height_pct": 52},
+    },
 }
 
 EDIT_OPERATION_LABELS: dict[str, str] = {
@@ -134,7 +182,405 @@ EDIT_OPERATION_LABELS: dict[str, str] = {
     "background_extension": "Background extension",
     "text_safe_area_adjustment": "Text-safe-area adjustment",
     "aspect_ratio_conversion": "Aspect-ratio conversion",
+    "video_end_card_overlay": "Video end-card overlay",
+    "cta_overlay": "CTA overlay",
 }
+
+VIDEO_TREATMENTS = [
+    {
+        "treatment_id": "stadium-glow",
+        "name": "Stadium glow",
+        "accent": "#0f9f95",
+        "secondary": "#256b8f",
+        "filter_css": "saturate(1.08) contrast(1.06)",
+        "overlay_position": "left",
+        "motion": "slow push-in",
+        "badge": "live energy",
+    },
+    {
+        "treatment_id": "cinema-warmth",
+        "name": "Cinema warmth",
+        "accent": "#c7793a",
+        "secondary": "#7c4d2d",
+        "filter_css": "saturate(1.15) contrast(1.02) sepia(0.14)",
+        "overlay_position": "right",
+        "motion": "soft reveal",
+        "badge": "family night",
+    },
+    {
+        "treatment_id": "premium-focus",
+        "name": "Premium focus",
+        "accent": "#5b65d8",
+        "secondary": "#13212d",
+        "filter_css": "saturate(0.94) contrast(1.14) brightness(0.94)",
+        "overlay_position": "center",
+        "motion": "spotlight hold",
+        "badge": "premium",
+    },
+    {
+        "treatment_id": "value-signal",
+        "name": "Value signal",
+        "accent": "#1f9d72",
+        "secondary": "#0f766e",
+        "filter_css": "saturate(1.04) contrast(1.08) hue-rotate(8deg)",
+        "overlay_position": "left",
+        "motion": "CTA lift",
+        "badge": "upgrade",
+    },
+    {
+        "treatment_id": "event-return",
+        "name": "Event return",
+        "accent": "#256b8f",
+        "secondary": "#071523",
+        "filter_css": "saturate(1.10) contrast(1.10) brightness(0.92)",
+        "overlay_position": "right",
+        "motion": "countdown pulse",
+        "badge": "winback",
+    },
+]
+
+VIDEO_COPY_VARIATIONS = [
+    ("{base}", "{cta}"),
+    ("{base} Tonight feels bigger.", "Watch now"),
+    ("{base} Built for the big screen.", "See the lineup"),
+    ("{base} Don't miss the next moment.", "Stream tonight"),
+]
+
+CREATIVE_VISUAL_TREATMENTS = [
+    {
+        "treatment_id": "live-hero",
+        "name": "Live hero",
+        "accent": "#0f9f95",
+        "secondary": "#256b8f",
+        "layout": "left-panel",
+        "motif": "hero tune-in",
+        "badge": "LIVE",
+        "element_primary": "Live event hero",
+        "element_secondary": "Subtle tune-in accent",
+        "shape": "soft panel",
+        "pattern": "cinematic wash",
+        "copy_angle": "Tonight's live lineup",
+        "headline": "Tonight's live lineup",
+        "cta_text": "View lineup",
+    },
+    {
+        "treatment_id": "family-feature",
+        "name": "Family feature",
+        "accent": "#c7793a",
+        "secondary": "#7c4d2d",
+        "layout": "bottom-panel",
+        "motif": "weekend feature",
+        "badge": "WEEKEND",
+        "element_primary": "Weekend feature card",
+        "element_secondary": "Warm co-viewing cue",
+        "shape": "feature card",
+        "pattern": "warm vignette",
+        "copy_angle": "Weekend watchlist",
+        "headline": "Weekend watchlist",
+        "cta_text": "Browse picks",
+    },
+    {
+        "treatment_id": "originals-spotlight",
+        "name": "Originals spotlight",
+        "accent": "#5b65d8",
+        "secondary": "#13212d",
+        "layout": "center-panel",
+        "motif": "premium title",
+        "badge": "PREMIERE",
+        "element_primary": "Premium title lockup",
+        "element_secondary": "Quiet premiere accent",
+        "shape": "spotlight panel",
+        "pattern": "soft spotlight",
+        "copy_angle": "Your next original",
+        "headline": "Your next original",
+        "cta_text": "Watch trailer",
+    },
+    {
+        "treatment_id": "upgrade-offer",
+        "name": "Upgrade offer",
+        "accent": "#1f9d72",
+        "secondary": "#0f766e",
+        "layout": "right-panel",
+        "motif": "annual value",
+        "badge": "UPGRADE",
+        "element_primary": "Clean offer chip",
+        "element_secondary": "Plan value cue",
+        "shape": "offer chip",
+        "pattern": "subtle lift",
+        "copy_angle": "More to watch",
+        "headline": "More to watch",
+        "cta_text": "Compare plans",
+    },
+    {
+        "treatment_id": "winback-event",
+        "name": "Winback event",
+        "accent": "#256b8f",
+        "secondary": "#071523",
+        "layout": "right-panel",
+        "motif": "return event",
+        "badge": "RETURN",
+        "element_primary": "Return-to-event card",
+        "element_secondary": "Restart cue",
+        "shape": "event card",
+        "pattern": "deep vignette",
+        "copy_angle": "Back for the big event",
+        "headline": "Back for the big event",
+        "cta_text": "Restart now",
+    },
+]
+
+BRAND_GUIDELINES = [
+    {
+        "guideline_id": "GUIDE-CME-STREAMING-001",
+        "brand_name": "CME Streaming",
+        "profile_name": "CME Streaming Summit Demo",
+        "version": "2026.06-demo",
+        "status": "active",
+        "tone": "premium, direct, energetic, trustworthy",
+        "headline_rules_json": json.dumps(
+            [
+                "Lead with live-event value or household viewing utility.",
+                "Keep headlines under 42 characters for end-card readability.",
+                "Avoid unsupported exclusivity, unsupported savings, and urgency claims.",
+            ]
+        ),
+        "visual_rules_json": json.dumps(
+            [
+                "Use deep navy, teal, warm amber, and clean white contrast.",
+                "Keep CTA and brand mark in the safe area for every placement.",
+                "Use streaming-context imagery, device framing, or live-event atmosphere without depicting real licensed talent.",
+            ]
+        ),
+        "color_tokens_json": json.dumps(
+            {
+                "navy": "#071523",
+                "teal": "#0f9f95",
+                "blue": "#256b8f",
+                "amber": "#c7793a",
+                "white": "#ffffff",
+            }
+        ),
+        "required_elements_json": json.dumps(["CME Streaming", "clear CTA", "safe-area copy", "rights-safe visual treatment"]),
+        "blocked_claims_json": json.dumps(["unsupported savings claims", "unverified exclusivity claims", "all-game availability claims"]),
+        "created_ts": "2026-06-01",
+        "updated_ts": "2026-06-01",
+    }
+]
+
+GENERATION_MODEL_OPTIONS = [
+    {
+        "model_id": "gpt-5-mini-balanced",
+        "label": "GPT-5 Mini - Balanced",
+        "provider": "Databricks Model Serving",
+        "endpoint_name": CREATIVE_MODEL_ENDPOINT,
+        "modality": "image",
+        "default": True,
+        "description": "Primary summit-demo option for prompt-to-image variant generation and scoring narration.",
+        "latency_profile": "interactive",
+        "governance_note": "Uses the configured creative endpoint and writes prompt, reference asset, and guideline lineage.",
+    },
+    {
+        "model_id": "kimi-2-compare",
+        "label": "Kimi 2 - Model Compare",
+        "provider": "Databricks Model Serving",
+        "endpoint_name": os.getenv("CREATIVE_COMPARE_MODEL_ENDPOINT", CREATIVE_MODEL_ENDPOINT or "kimi-2-demo"),
+        "modality": "image",
+        "default": False,
+        "description": "Comparison option for side-by-side image prompt evaluation in the demo.",
+        "latency_profile": "interactive",
+        "governance_note": "Stored as comparison metadata when selected; falls back to the configured creative endpoint if not separately configured.",
+    },
+    {
+        "model_id": "runway-gen3-video-endcard",
+        "label": "Runway Gen-3 - Video End Card",
+        "provider": "External video model via governed endpoint",
+        "endpoint_name": os.getenv("CREATIVE_VIDEO_MODEL_ENDPOINT", "runway-gen3-video-endcard-demo"),
+        "modality": "video",
+        "default": False,
+        "description": "Demo option for generating a short MP4 with a final end-card CTA.",
+        "latency_profile": "async-preview",
+        "governance_note": "The app records requested video model, source asset, end-card copy, CTA, and MP4 preview URI.",
+    },
+]
+
+EVALUATION_RUBRICS = [
+    {
+        "rubric_id": "RUBRIC-CME-SYNTH-001",
+        "name": "Evaluation Criteria",
+        "judge_model": CREATIVE_JUDGE_MODEL_ENDPOINT,
+        "weights_json": json.dumps(
+            {
+                "overall_score": 0.58,
+                "click_propensity_score": 0.18,
+                "brand_fit_score": 0.14,
+                "fatigue_inverse": 0.10,
+                "placement_channel_fit": "additive adjustment",
+            }
+        ),
+        "criteria_json": json.dumps(
+            [
+                "Audience relevance and segment fit",
+                "Click or tune-in propensity",
+                "Brand guideline adherence",
+                "Creative clarity",
+                "Fatigue and repetition risk",
+                "Placement and channel fit",
+            ]
+        ),
+        "created_ts": "2026-06-01",
+    }
+]
+
+ACTIVATION_CHANNELS = [
+    {
+        "id": "meta",
+        "label": "Meta",
+        "base_cpm": 9.2,
+        "ctr_lift": 0.22,
+        "placement_fit": {"social_square": 8, "story_unit": 9, "social_video_15s": 10, "homepage_hero": -6, "newsletter_banner": -4},
+    },
+    {
+        "id": "google_ads",
+        "label": "Google Ads",
+        "base_cpm": 8.6,
+        "ctr_lift": 0.18,
+        "placement_fit": {"homepage_hero": 2, "app_tile": 5, "youtube_15s": 9, "social_video_15s": 6, "newsletter_banner": -2},
+    },
+    {
+        "id": "dv360",
+        "label": "DV360",
+        "base_cpm": 10.8,
+        "ctr_lift": 0.12,
+        "placement_fit": {"homepage_hero": 7, "newsletter_banner": 4, "ctv_15s": 9, "youtube_15s": 6, "social_square": 1},
+    },
+    {
+        "id": "ttd",
+        "label": "The Trade Desk",
+        "base_cpm": 11.4,
+        "ctr_lift": 0.15,
+        "placement_fit": {"homepage_hero": 5, "newsletter_banner": 3, "ctv_15s": 10, "youtube_15s": 6, "app_tile": 0},
+    },
+    {
+        "id": "adobe_target",
+        "label": "Adobe Target",
+        "base_cpm": 6.4,
+        "ctr_lift": 0.32,
+        "placement_fit": {"homepage_hero": 10, "app_tile": 8, "newsletter_banner": 6, "social_square": -1, "ctv_15s": -5},
+    },
+    {
+        "id": "email",
+        "label": "Email",
+        "base_cpm": 3.2,
+        "ctr_lift": 0.08,
+        "placement_fit": {"newsletter_banner": 10, "homepage_hero": 1, "app_tile": 0, "social_square": -4, "story_unit": -8},
+    },
+]
+
+AUDIENCE_DEMOGRAPHIC_SIGNALS = [
+    {
+        "signal_id": "DEMO-BOOMERS-MIDWEST-001",
+        "cohort_id": "COH-001",
+        "generation": "Boomers",
+        "region": "Midwest",
+        "age_range": "59-77",
+        "household_profile": "Empty nest and multigenerational co-viewing",
+        "content_affinity": "live sports, classics, appointment viewing",
+        "device_preference": "CTV first",
+        "message_preference": "clear value, low-friction setup, recognizable live-event cue",
+        "resonance_weight": 1.12,
+        "governance_status": "fallback-governed",
+    },
+    {
+        "signal_id": "DEMO-MILLENNIALS-MIDWEST-001",
+        "cohort_id": "COH-004",
+        "generation": "Millennials",
+        "region": "Midwest",
+        "age_range": "29-44",
+        "household_profile": "Busy streamers comparing bundles",
+        "content_affinity": "premium originals, live events, social clips",
+        "device_preference": "mobile and CTV",
+        "message_preference": "bundle depth, annual-plan value, mobile-to-TV continuity",
+        "resonance_weight": 1.03,
+        "governance_status": "fallback-governed",
+    },
+    {
+        "signal_id": "DEMO-BOOMERS-SOUTH-001",
+        "cohort_id": "COH-002",
+        "generation": "Boomers",
+        "region": "South",
+        "age_range": "59-77",
+        "household_profile": "Lapsed subscribers with sports affinity",
+        "content_affinity": "regional sports, tentpole games, news adjacencies",
+        "device_preference": "CTV and web",
+        "message_preference": "winback clarity, familiar event schedule, no-hassle restart",
+        "resonance_weight": 1.01,
+        "governance_status": "fallback-governed",
+    },
+    {
+        "signal_id": "DEMO-GENX-WEST-001",
+        "cohort_id": "COH-003",
+        "generation": "Gen X",
+        "region": "West",
+        "age_range": "45-58",
+        "household_profile": "Family households with shared weekend viewing",
+        "content_affinity": "family movies, sports highlights, franchises",
+        "device_preference": "CTV and tablet",
+        "message_preference": "shared viewing and weekend discovery",
+        "resonance_weight": 0.96,
+        "governance_status": "fallback-governed",
+    },
+]
+
+PURCHASE_INTENT_SIGNALS = [
+    {
+        "signal_id": "PURCHASE-BOOMERS-MIDWEST-001",
+        "cohort_id": "COH-001",
+        "generation": "Boomers",
+        "region": "Midwest",
+        "purchase_intent_score": 86,
+        "conversion_rate": 0.078,
+        "avg_order_value": 129,
+        "trigger": "live sports bundle reminder",
+        "preferred_offer": "annual plan with live-event calendar",
+        "recommended_channel": "The Trade Desk",
+    },
+    {
+        "signal_id": "PURCHASE-MILLENNIALS-MIDWEST-001",
+        "cohort_id": "COH-004",
+        "generation": "Millennials",
+        "region": "Midwest",
+        "purchase_intent_score": 79,
+        "conversion_rate": 0.064,
+        "avg_order_value": 118,
+        "trigger": "trial-to-paid upgrade moment",
+        "preferred_offer": "annual plan value and mobile continuity",
+        "recommended_channel": "Google Ads",
+    },
+    {
+        "signal_id": "PURCHASE-BOOMERS-SOUTH-001",
+        "cohort_id": "COH-002",
+        "generation": "Boomers",
+        "region": "South",
+        "purchase_intent_score": 74,
+        "conversion_rate": 0.058,
+        "avg_order_value": 102,
+        "trigger": "winback before tentpole game",
+        "preferred_offer": "restart reminder with schedule clarity",
+        "recommended_channel": "Email",
+    },
+    {
+        "signal_id": "PURCHASE-GENX-WEST-001",
+        "cohort_id": "COH-003",
+        "generation": "Gen X",
+        "region": "West",
+        "purchase_intent_score": 71,
+        "conversion_rate": 0.052,
+        "avg_order_value": 96,
+        "trigger": "weekend family viewing plan",
+        "preferred_offer": "family movie-night bundle",
+        "recommended_channel": "Adobe Target",
+    },
+]
 
 
 def _display_path(path: Path) -> str:
@@ -502,9 +948,9 @@ def _json_payload(value: Any) -> dict[str, Any]:
     return {"value": value}
 
 
-def _lakebase_persist_rows(table_key: str, rows: list[dict[str, Any]], event_type: str) -> None:
+def _lakebase_persist_rows(table_key: str, rows: list[dict[str, Any]], event_type: str) -> bool:
     if not rows or not _lakebase_init():
-        return
+        return False
     table_name, key_column, entity_type = STATE_TABLES[table_key]
     try:
         with _lakebase_connect() as conn:
@@ -531,8 +977,10 @@ def _lakebase_persist_rows(table_key: str, rows: list[dict[str, Any]], event_typ
                         """,
                         (str(uuid.uuid4()), event_type, entity_type, entity_id, payload_json),
                     )
+        return True
     except Exception as exc:
         _state_error(f"persist_{table_key}", exc)
+        return False
 
 
 def _lakebase_rows(table_key: str, limit: int = 250) -> list[dict[str, Any]]:
@@ -900,6 +1348,11 @@ def _workflow_rows() -> dict[str, list[dict[str, Any]]]:
         "audiences": runtime["audiences"],
         "creatives": runtime["creatives"],
         "audience_traits": workflow["audience_traits"],
+        "brand_guidelines": _brand_guidelines_data(),
+        "generation_models": _generation_model_options_data(),
+        "evaluation_rubrics": _evaluation_rubrics_data(),
+        "audience_demographics": _audience_demographic_signals_data(),
+        "purchase_signals": _purchase_intent_signals_data(),
         "base_assets": _governed_retrieval_assets(),
         "generation_requests": _dedupe_by_key(
             [*_lakebase_rows("generation_requests"), *LIVE_GENERATION_REQUESTS, *workflow["generation_requests"]],
@@ -932,6 +1385,182 @@ def _workflow_rows() -> dict[str, list[dict[str, Any]]]:
     }
 
 
+def _channel_projection_for(evaluation: dict[str, Any], channel: dict[str, Any]) -> dict[str, Any]:
+    placement = _as_text(evaluation.get("placement"))
+    placement_fit = _as_float_value((channel.get("placement_fit") or {}).get(placement), 0.0)
+    score = round(
+        min(
+            99,
+            max(
+                0,
+                _as_float_value(evaluation.get("overall_score")) * 0.58
+                + _as_float_value(evaluation.get("click_propensity_score")) * 0.18
+                + _as_float_value(evaluation.get("brand_fit_score")) * 0.14
+                + (100 - _as_float_value(evaluation.get("fatigue_risk_score"))) * 0.10
+                + placement_fit,
+            ),
+        )
+    )
+    projected_ctr = min(
+        5.4,
+        max(
+            0.25,
+            (_as_float_value(evaluation.get("click_propensity_score")) / 100) * 2.9
+            + _as_float_value(channel.get("ctr_lift"))
+            + placement_fit / 55,
+        ),
+    )
+    projected_cpm = max(
+        2.5,
+        _as_float_value(channel.get("base_cpm"))
+        + max(0, 82 - _as_float_value(evaluation.get("relevance_score"))) * 0.025
+        + max(0, placement_fit) * 0.03,
+    )
+    projected_conversions = round(
+        (_as_float_value(evaluation.get("subscription_start_propensity_score")) * score) / 10
+    )
+    return {
+        "channel_id": channel["id"],
+        "channel_label": channel["label"],
+        "score": score,
+        "projected_ctr": round(projected_ctr, 2),
+        "projected_cpm": round(projected_cpm, 2),
+        "projected_conversions": projected_conversions,
+        "placement_fit": placement_fit,
+    }
+
+
+def _evaluation_channel_matrix_rows(rows: dict[str, list[dict[str, Any]]] | None = None) -> list[dict[str, Any]]:
+    rows = rows or _workflow_rows()
+    variant_by_id = {_as_text(item.get("creative_asset_id")): item for item in rows["variants"]}
+    rubric = (rows.get("evaluation_rubrics") or _evaluation_rubrics_data() or EVALUATION_RUBRICS)[0]
+    matrix_rows = []
+    for evaluation in rows["evaluations"]:
+        creative_id = _as_text(evaluation.get("creative_asset_id"))
+        variant = variant_by_id.get(creative_id, {})
+        projections = [_channel_projection_for(evaluation, channel) for channel in ACTIVATION_CHANNELS]
+        projections = sorted(projections, key=lambda item: (-_as_int_value(item.get("score")), _as_float_value(item.get("projected_cpm"))))
+        recommended = projections[0] if projections else {}
+        matrix_rows.append(
+            {
+                "evaluation_id": evaluation.get("evaluation_id"),
+                "creative_asset_id": creative_id,
+                "asset_name": variant.get("asset_name"),
+                "cohort_id": evaluation.get("cohort_id"),
+                "placement": evaluation.get("placement"),
+                "overall_score": evaluation.get("overall_score"),
+                "rank_within_segment_placement": evaluation.get("rank_within_segment_placement"),
+                "recommended_channel_id": recommended.get("channel_id"),
+                "recommended_channel_label": recommended.get("channel_label"),
+                "channels": projections,
+                "explanation_id": f"EXPLAIN-{evaluation.get('evaluation_id')}",
+                "rubric_id": rubric["rubric_id"],
+            }
+        )
+    return matrix_rows
+
+
+def _score_explanation_for_evaluation(evaluation_id: str) -> dict[str, Any]:
+    rows = _workflow_rows()
+    evaluation = next((item for item in rows["evaluations"] if _as_text(item.get("evaluation_id")) == evaluation_id), None)
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Synthetic evaluation not found")
+    matrix = next((item for item in _evaluation_channel_matrix_rows(rows) if item.get("evaluation_id") == evaluation_id), None)
+    variant = _find_by_id(rows["variants"], "creative_asset_id", _as_text(evaluation.get("creative_asset_id")))
+    audience = _find_by_id(rows["audiences"], "cohort_id", _as_text(evaluation.get("cohort_id")))
+    request = _find_by_id(rows["generation_requests"], "request_id", _as_text((variant or {}).get("request_id")))
+    guideline = _brand_guideline_by_id(_as_text((variant or {}).get("brand_guideline_id") or (request or {}).get("brand_guideline_id")))
+    rubric = (rows.get("evaluation_rubrics") or _evaluation_rubrics_data() or EVALUATION_RUBRICS)[0]
+    if matrix is None:
+        projections = [_channel_projection_for(evaluation, channel) for channel in ACTIVATION_CHANNELS]
+        projections = sorted(projections, key=lambda item: (-_as_int_value(item.get("score")), _as_float_value(item.get("projected_cpm"))))
+        recommended = projections[0] if projections else {}
+        matrix = {
+            "evaluation_id": evaluation_id,
+            "creative_asset_id": _as_text(evaluation.get("creative_asset_id")),
+            "asset_name": (variant or {}).get("asset_name"),
+            "cohort_id": evaluation.get("cohort_id"),
+            "placement": evaluation.get("placement"),
+            "overall_score": evaluation.get("overall_score"),
+            "rank_within_segment_placement": evaluation.get("rank_within_segment_placement"),
+            "recommended_channel_id": recommended.get("channel_id"),
+            "recommended_channel_label": recommended.get("channel_label"),
+            "channels": projections,
+            "explanation_id": f"EXPLAIN-{evaluation_id}",
+            "rubric_id": rubric["rubric_id"],
+        }
+    return {
+        "explanation_id": f"EXPLAIN-{evaluation_id}",
+        "evaluation": evaluation,
+        "creative_variant": variant,
+        "audience": audience,
+        "generation_request": request,
+        "brand_guideline": guideline,
+        "rubric": rubric,
+        "channel_matrix": matrix,
+        "model_settings": {
+            "judge_model": evaluation.get("judge_model") or CREATIVE_JUDGE_MODEL_ENDPOINT,
+            "generation_model": (variant or {}).get("generation_model") or (request or {}).get("generation_model_label") or CREATIVE_MODEL_ENDPOINT,
+            "generation_model_id": (variant or {}).get("generation_model_id") or (request or {}).get("generation_model_id") or "",
+            "rubric_id": rubric["rubric_id"],
+            "score_source": "backend_api",
+        },
+        "reasoning": [
+            f"Overall score {_display_value(evaluation.get('overall_score'))} carries the largest weight.",
+            f"Click propensity {_display_value(evaluation.get('click_propensity_score'))} and brand fit {_display_value(evaluation.get('brand_fit_score'))} lift the channel score.",
+            f"Fatigue risk {_display_value(evaluation.get('fatigue_risk_score'))} is inverted so lower fatigue improves readiness.",
+            f"Recommended channel is {(matrix or {}).get('recommended_channel_label', 'N/A')} after placement-fit and CPM tie-breaks.",
+        ],
+    }
+
+
+def _demographic_purchase_answer_rows(rows: dict[str, list[dict[str, Any]]], generation: str, region: str) -> list[dict[str, Any]]:
+    generation_token = generation.lower()
+    region_token = region.lower()
+    demographic_rows = [
+        item
+        for item in rows["audience_demographics"]
+        if generation_token in _as_text(item.get("generation")).lower()
+        and region_token in _as_text(item.get("region")).lower()
+    ]
+    purchase_by_cohort = {
+        _as_text(item.get("cohort_id")): item
+        for item in rows["purchase_signals"]
+        if generation_token in _as_text(item.get("generation")).lower()
+        and region_token in _as_text(item.get("region")).lower()
+    }
+    audience_by_id = {_as_text(item.get("cohort_id")): item for item in rows["audiences"]}
+    variant_by_id = {_as_text(item.get("creative_asset_id")): item for item in rows["variants"]}
+    scored_rows = []
+    for demographic in demographic_rows:
+        cohort_id = _as_text(demographic.get("cohort_id"))
+        purchase = purchase_by_cohort.get(cohort_id, {})
+        for evaluation in rows["evaluations"]:
+            if _as_text(evaluation.get("cohort_id")) != cohort_id:
+                continue
+            variant = variant_by_id.get(_as_text(evaluation.get("creative_asset_id")), {})
+            resonance_score = round(
+                _as_float_value(evaluation.get("overall_score")) * _as_float_value(demographic.get("resonance_weight"), 1.0)
+                + _as_float_value(purchase.get("purchase_intent_score")) * 0.12,
+                1,
+            )
+            scored_rows.append(
+                {
+                    "creative_asset_id": evaluation.get("creative_asset_id"),
+                    "asset_name": variant.get("asset_name"),
+                    "cohort_name": audience_by_id.get(cohort_id, {}).get("cohort_name"),
+                    "generation": demographic.get("generation"),
+                    "region": demographic.get("region"),
+                    "overall_score": evaluation.get("overall_score"),
+                    "purchase_intent_score": purchase.get("purchase_intent_score"),
+                    "recommended_channel": purchase.get("recommended_channel"),
+                    "resonance_score": resonance_score,
+                    "message_preference": demographic.get("message_preference"),
+                }
+            )
+    return sorted(scored_rows, key=lambda item: _as_float_value(item.get("resonance_score")), reverse=True)
+
+
 def _ask_workflow_fallback(question: str, genie_error: str = "") -> dict[str, Any]:
     closest_question, _score = _closest_genie_question(question)
     intent = _normalized_question(closest_question or question)
@@ -941,6 +1570,151 @@ def _ask_workflow_fallback(question: str, genie_error: str = "") -> dict[str, An
     audience_by_id = {_as_text(item.get("cohort_id")): item for item in rows["audiences"]}
     brief_by_id = {_as_text(item.get("brief_id")): item for item in rows["briefs"]}
     prefix = "Here is the governed Creative Command Center view."
+
+    if "boomers" in intent and "midwest" in intent and ("resonate" in intent or "likely" in intent):
+        scored_rows = _demographic_purchase_answer_rows(rows, "Boomers", "Midwest")
+        top = scored_rows[0] if scored_rows else {}
+        return {
+            "answer": (
+                f"{prefix} The strongest governed fallback match for Boomers in the Midwest is "
+                f"{top.get('asset_name', top.get('creative_asset_id', 'N/A'))}, driven by synthetic score, "
+                "CTV/live-sports affinity, and purchase-intent lift."
+            ),
+            "result": {
+                "title": "Boomers in the Midwest resonance ranking",
+                "rows": _table_rows(
+                    scored_rows,
+                    [
+                        ("creative_asset_id", "Creative ID"),
+                        ("asset_name", "Creative"),
+                        ("cohort_name", "Audience"),
+                        ("overall_score", "Synthetic"),
+                        ("purchase_intent_score", "Intent"),
+                        ("recommended_channel", "Channel"),
+                        ("resonance_score", "Resonance"),
+                    ],
+                ),
+            },
+        }
+
+    if ("millennials" in intent and "boomers" in intent) or "generation" in intent and "performs best" in intent:
+        comparison = []
+        for generation, region in [("Boomers", "Midwest"), ("Millennials", "Midwest")]:
+            rows_for_generation = _demographic_purchase_answer_rows(rows, generation, region)
+            if rows_for_generation:
+                comparison.append(rows_for_generation[0])
+        return {
+            "answer": f"{prefix} Compared the strongest governed fallback creative for millennials versus boomers.",
+            "result": {
+                "title": "Generation-level creative comparison",
+                "rows": _table_rows(
+                    comparison,
+                    [
+                        ("generation", "Generation"),
+                        ("region", "Region"),
+                        ("creative_asset_id", "Creative ID"),
+                        ("asset_name", "Creative"),
+                        ("purchase_intent_score", "Intent"),
+                        ("resonance_score", "Resonance"),
+                    ],
+                ),
+            },
+        }
+
+    if "purchase intent" in intent or "strongest purchase" in intent:
+        purchase_by_cohort = {_as_text(item.get("cohort_id")): item for item in rows["purchase_signals"]}
+        scored = []
+        for evaluation in rows["evaluations"]:
+            purchase = purchase_by_cohort.get(_as_text(evaluation.get("cohort_id")), {})
+            variant = variant_by_id.get(_as_text(evaluation.get("creative_asset_id")), {})
+            if not purchase:
+                continue
+            scored.append(
+                {
+                    "creative_asset_id": evaluation.get("creative_asset_id"),
+                    "asset_name": variant.get("asset_name"),
+                    "cohort_name": audience_by_id.get(_as_text(evaluation.get("cohort_id")), {}).get("cohort_name"),
+                    "overall_score": evaluation.get("overall_score"),
+                    "purchase_intent_score": purchase.get("purchase_intent_score"),
+                    "recommended_channel": purchase.get("recommended_channel"),
+                    "trigger": purchase.get("trigger"),
+                }
+            )
+        scored = sorted(scored, key=lambda item: (_as_float_value(item.get("purchase_intent_score")), _as_float_value(item.get("overall_score"))), reverse=True)
+        return {
+            "answer": f"{prefix} Ranked variants by purchase-intent signal and synthetic audience score.",
+            "result": {
+                "title": "Purchase intent leaders",
+                "rows": _table_rows(
+                    scored,
+                    [
+                        ("creative_asset_id", "Creative ID"),
+                        ("asset_name", "Creative"),
+                        ("cohort_name", "Audience"),
+                        ("overall_score", "Synthetic"),
+                        ("purchase_intent_score", "Intent"),
+                        ("recommended_channel", "Channel"),
+                    ],
+                ),
+            },
+        }
+
+    if "how is creative" in intent and "performing against" in intent:
+        token_parts = _as_text(question).replace("?", "").split()
+        creative_token = next((part.strip(",") for part in token_parts if part.upper().startswith(("VAR-", "CR-"))), "")
+        normalized_question = _normalized_token(question)
+        matching = []
+        for evaluation in rows["evaluations"]:
+            creative_id = _as_text(evaluation.get("creative_asset_id"))
+            audience = audience_by_id.get(_as_text(evaluation.get("cohort_id")), {})
+            if creative_token and creative_id != creative_token:
+                continue
+            if not creative_token and creative_id.lower() not in normalized_question:
+                continue
+            matching.append(
+                {
+                    **evaluation,
+                    "asset_name": variant_by_id.get(creative_id, {}).get("asset_name"),
+                    "cohort_name": audience.get("cohort_name"),
+                    "recommended_channel": next(
+                        (
+                            item.get("recommended_channel_label")
+                            for item in _evaluation_channel_matrix_rows(rows)
+                            if item.get("evaluation_id") == evaluation.get("evaluation_id")
+                        ),
+                        "",
+                    ),
+                }
+            )
+        if not matching:
+            matching = sorted(rows["evaluations"], key=lambda item: _as_float_value(item.get("overall_score")), reverse=True)[:5]
+            matching = [
+                {
+                    **evaluation,
+                    "asset_name": variant_by_id.get(_as_text(evaluation.get("creative_asset_id")), {}).get("asset_name"),
+                    "cohort_name": audience_by_id.get(_as_text(evaluation.get("cohort_id")), {}).get("cohort_name"),
+                }
+                for evaluation in matching
+            ]
+        return {
+            "answer": f"{prefix} Returned synthetic performance rows for the requested creative and audience wording.",
+            "result": {
+                "title": "Creative performance against audience",
+                "rows": _table_rows(
+                    matching,
+                    [
+                        ("creative_asset_id", "Creative ID"),
+                        ("asset_name", "Creative"),
+                        ("cohort_name", "Audience"),
+                        ("placement", "Placement"),
+                        ("overall_score", "Overall"),
+                        ("click_propensity_score", "Click"),
+                        ("brand_fit_score", "Brand Fit"),
+                        ("recommended_channel", "Channel"),
+                    ],
+                ),
+            },
+        }
 
     if "base creative assets" in intent or "homepage hero placements" in intent:
         assets = [
@@ -1200,6 +1974,41 @@ def _ask_workflow_fallback(question: str, genie_error: str = "") -> dict[str, An
             },
         }
 
+    if "generation model" in intent and ("strongest" in intent or "best" in intent):
+        approved_ids = {
+            _as_text(variant.get("creative_asset_id"))
+            for variant in variants
+            if _as_text(variant.get("approval_status")).lower() == "approved"
+        }
+        scored = [
+            {
+                **evaluation,
+                "asset_name": variant_by_id.get(_as_text(evaluation.get("creative_asset_id")), {}).get("asset_name"),
+                "generation_model": variant_by_id.get(_as_text(evaluation.get("creative_asset_id")), {}).get("generation_model"),
+                "approval_status": variant_by_id.get(_as_text(evaluation.get("creative_asset_id")), {}).get("approval_status"),
+            }
+            for evaluation in rows["evaluations"]
+            if _as_text(evaluation.get("creative_asset_id")) in approved_ids
+        ]
+        scored = sorted(scored, key=lambda item: _as_float_value(item.get("overall_score")), reverse=True)
+        return {
+            "answer": f"{prefix} The strongest approved creative is ranked by backend synthetic score and grouped with its generation model.",
+            "result": {
+                "title": "Strongest approved creative by generation model",
+                "rows": _table_rows(
+                    scored,
+                    [
+                        ("creative_asset_id", "Creative ID"),
+                        ("asset_name", "Creative"),
+                        ("generation_model", "Model"),
+                        ("overall_score", "Overall"),
+                        ("rank_within_segment_placement", "Rank"),
+                        ("approval_status", "Approval"),
+                    ],
+                ),
+            },
+        }
+
     if "generation model endpoints" in intent or "produced current variants" in intent:
         model_rows = [
             {
@@ -1289,6 +2098,11 @@ def _ask_workflow_fallback(question: str, genie_error: str = "") -> dict[str, An
             {
                 **transformation,
                 "asset_name": _as_text(variant_by_id.get(_as_text(transformation.get("creative_asset_id")), {}).get("asset_name")),
+                "generation_model": _as_text(
+                    transformation.get("tool_or_model")
+                    or variant_by_id.get(_as_text(transformation.get("creative_asset_id")), {}).get("generation_model"),
+                    "N/A",
+                ),
             }
             for transformation in rows["transformations"]
         ]
@@ -1301,6 +2115,7 @@ def _ask_workflow_fallback(question: str, genie_error: str = "") -> dict[str, An
                     [
                         ("creative_asset_id", "Creative ID"),
                         ("asset_name", "Creative"),
+                        ("generation_model", "Model"),
                         ("transformation_type", "Transformation"),
                         ("edit_sequence", "Step"),
                         ("edit_goal", "Edit Goal"),
@@ -1359,13 +2174,7 @@ def _invoke_model_endpoint(
     }
     if not endpoint_name or CREATIVE_GENERATION_MODE not in {"model_endpoint", "databricks", "serving", "external"}:
         return invocation
-    has_direct_databricks_auth = bool(os.getenv("DATABRICKS_HOST")) and bool(
-        os.getenv("DATABRICKS_TOKEN")
-        or os.getenv("DATABRICKS_CLIENT_ID")
-        or os.getenv("DATABRICKS_CLIENT_SECRET")
-        or os.getenv("DATABRICKS_AUTH_TYPE")
-    )
-    if not has_direct_databricks_auth and not Path("/databricks").exists():
+    if not _has_direct_databricks_auth() and not Path("/databricks").exists():
         invocation["status"] = "metadata_only"
         invocation["error"] = "Databricks auth environment is not present in this local process."
         return invocation
@@ -2349,6 +3158,131 @@ def _activity_from(activations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows or ACTIVITY
 
 
+def _load_databricks_quality_radar() -> list[dict[str, Any]]:
+    table = _pipeline_table("gold_creative_quality_scorecard")
+    rows = _execute_sql(f"SELECT axis, score FROM {table} ORDER BY axis LIMIT 25", row_limit=25)
+    quality_rows = [{"axis": _as_text(row.get("axis")), "score": _as_int_value(row.get("score"))} for row in rows]
+    _table_source("quality_radar", table, len(quality_rows))
+    return quality_rows or QUALITY_RADAR
+
+
+def _load_databricks_activity() -> list[dict[str, Any]]:
+    table = _pipeline_table("gold_campaign_activity_stream")
+    rows = _execute_sql(f"SELECT event, detail, `time`, type FROM {table} LIMIT 25", row_limit=25)
+    activity_rows = [
+        {
+            "event": _as_text(row.get("event")),
+            "detail": _as_text(row.get("detail")),
+            "time": _as_text(row.get("time")),
+            "type": _as_text(row.get("type")),
+        }
+        for row in rows
+    ]
+    _table_source("activity", table, len(activity_rows))
+    return activity_rows or ACTIVITY
+
+
+def _load_databricks_markets() -> list[dict[str, Any]]:
+    market_table = _pipeline_table("gold_market_opportunity")
+    city_table = _pipeline_table("gold_market_metro_detail")
+    trend_table = _pipeline_table("gold_market_reach_trend")
+    mix_table = _pipeline_table("gold_market_audience_mix")
+
+    market_rows = _execute_sql(
+        f"""
+        SELECT
+          id,
+          name,
+          short_name,
+          states_json,
+          reach,
+          spend,
+          ctr,
+          conversion_lift,
+          priority,
+          signal,
+          top_audience,
+          recommended_action
+        FROM {market_table}
+        ORDER BY reach DESC
+        LIMIT 100
+        """,
+        row_limit=100,
+    )
+    city_rows = _execute_sql(
+        f"SELECT region_id, name, state, CAST(0 AS INT) AS x, CAST(0 AS INT) AS y, reach, ctr, lift FROM {city_table} LIMIT 500",
+        row_limit=500,
+    )
+    trend_rows = _execute_sql(
+        f"SELECT region_id, week, reach, conversions FROM {trend_table} LIMIT 500",
+        row_limit=500,
+    )
+    mix_rows = _execute_sql(
+        f"SELECT region_id, name, value FROM {mix_table} LIMIT 500",
+        row_limit=500,
+    )
+
+    cities_by_region: dict[str, list[dict[str, Any]]] = {}
+    for row in city_rows:
+        cities_by_region.setdefault(_as_text(row.get("region_id")), []).append(
+            {
+                "name": _as_text(row.get("name")),
+                "state": _as_text(row.get("state")),
+                "x": _as_int_value(row.get("x")),
+                "y": _as_int_value(row.get("y")),
+                "reach": _as_int_value(row.get("reach")),
+                "ctr": _as_float_value(row.get("ctr")),
+                "lift": _as_float_value(row.get("lift")),
+            }
+        )
+
+    trend_by_region: dict[str, list[dict[str, Any]]] = {}
+    for row in trend_rows:
+        trend_by_region.setdefault(_as_text(row.get("region_id")), []).append(
+            {
+                "week": _as_text(row.get("week")),
+                "reach": _as_int_value(row.get("reach")),
+                "conversions": _as_int_value(row.get("conversions")),
+            }
+        )
+
+    mix_by_region: dict[str, list[dict[str, Any]]] = {}
+    for row in mix_rows:
+        mix_by_region.setdefault(_as_text(row.get("region_id")), []).append(
+            {"name": _as_text(row.get("name")), "value": _as_int_value(row.get("value"))}
+        )
+
+    markets = []
+    for row in market_rows:
+        region_id = _as_text(row.get("id"))
+        states = _loads_json(row.get("states_json"), [])
+        markets.append(
+            {
+                "id": region_id,
+                "name": _as_text(row.get("name")),
+                "short_name": _as_text(row.get("short_name")),
+                "states": states if isinstance(states, list) else _split_tags(row.get("states_json")),
+                "reach": _as_int_value(row.get("reach")),
+                "spend": _as_int_value(row.get("spend")),
+                "ctr": _as_float_value(row.get("ctr")),
+                "conversion_lift": _as_float_value(row.get("conversion_lift")),
+                "priority": _as_text(row.get("priority")),
+                "signal": _as_text(row.get("signal")),
+                "top_audience": _as_text(row.get("top_audience")),
+                "recommended_action": _as_text(row.get("recommended_action")),
+                "cities": cities_by_region.get(region_id, []),
+                "trend": trend_by_region.get(region_id, []),
+                "audience_mix": mix_by_region.get(region_id, []),
+            }
+        )
+
+    _table_source("markets", market_table, len(markets))
+    _table_source("market_cities", city_table, len(city_rows))
+    _table_source("market_trend", trend_table, len(trend_rows))
+    _table_source("market_audience_mix", mix_table, len(mix_rows))
+    return markets or MARKET_REGIONS
+
+
 def _csv_runtime_data() -> dict[str, Any]:
     return {
         "briefs": BRIEFS,
@@ -2385,6 +3319,23 @@ def _runtime_data() -> dict[str, Any]:
             _table_error(key, exc)
 
     try:
+        data["markets"] = _load_databricks_markets()
+    except Exception as exc:
+        _table_error("markets", exc)
+
+    try:
+        quality_radar = _load_databricks_quality_radar()
+    except Exception as exc:
+        _table_error("quality_radar", exc)
+        quality_radar = QUALITY_RADAR
+
+    try:
+        activity = _load_databricks_activity()
+    except Exception as exc:
+        _table_error("activity", exc)
+        activity = _activity_from(data["activations"])
+
+    try:
         trend = _dashboard_trend_from_databricks()
         DATA_LOAD_SOURCES["performance_trend"] = {
             "source": "databricks_sql",
@@ -2411,8 +3362,8 @@ def _runtime_data() -> dict[str, Any]:
         "totals": _totals_for(data["briefs"], data["creatives"], data["activations"]),
         "trend": trend,
         "channel_mix": channel_mix or CHANNEL_MIX,
-        "quality_radar": QUALITY_RADAR,
-        "activity": _activity_from(data["activations"]),
+        "quality_radar": quality_radar,
+        "activity": activity,
     }
     return data
 
@@ -2497,6 +3448,42 @@ BACKEND_TABLES = [
         "description": "Audience traits that influence creative brief, tone, placement, and generation instructions.",
     },
     {
+        "name": "brand_guidelines",
+        "endpoint": "/api/brand-guidelines",
+        "lakehouse_table": "gold_buyside_brand_guideline_profile",
+        "description": "Generated CME Streaming brand guideline profile used for governed creative generation and policy evidence.",
+    },
+    {
+        "name": "generation_models",
+        "endpoint": "/api/generation-models",
+        "lakehouse_table": "gold_buyside_generation_model_option",
+        "description": "Summit demo model dropdown options, modalities, endpoint names, and governance notes.",
+    },
+    {
+        "name": "audience_demographics",
+        "endpoint": "/api/audience-demographics",
+        "lakehouse_table": "gold_buyside_audience_demographic_signal",
+        "description": "Governed demographic signals used by Genie fallback answers for live demo questions.",
+    },
+    {
+        "name": "purchase_signals",
+        "endpoint": "/api/purchase-signals",
+        "lakehouse_table": "gold_buyside_purchase_intent_signal",
+        "description": "Synthetic purchase-intent signals by generation, region, cohort, and recommended activation channel.",
+    },
+    {
+        "name": "evaluation_channel_matrix",
+        "endpoint": "/api/evaluation-channel-matrix",
+        "lakehouse_table": "gold_buyside_evaluation_channel_matrix",
+        "description": "Backend-computed channel projections and explanation IDs for activation decisions.",
+    },
+    {
+        "name": "evaluation_rubrics",
+        "endpoint": "/api/evaluation-rubrics",
+        "lakehouse_table": "gold_buyside_synthetic_eval_rubric",
+        "description": "Scoring weights, criteria, and judge model metadata used to explain synthetic evaluations.",
+    },
+    {
         "name": "base_creative_assets",
         "endpoint": "/api/creative-assets/search",
         "lakehouse_table": "gold_buyside_base_creative_asset",
@@ -2551,6 +3538,14 @@ class CreativeGenerationRequestIn(BaseModel):
     placement: str = "homepage_hero"
     category: str = ""
     content_type: str = "image"
+    brand_guideline_id: str = ""
+    generation_model_ids: list[str] = []
+    generation_model_id: str = ""
+    image_model_id: str = ""
+    compare_model_ids: list[str] = []
+    video_source_asset_id: str = ""
+    end_card_text: str = ""
+    cta_text: str = ""
     user_instructions: str = ""
     retrieval_query: str = ""
     selected_base_asset_ids: list[str] = []
@@ -2611,7 +3606,269 @@ def _placement_spec(placement: str) -> dict[str, Any]:
     return PLACEMENT_SPECS.get(placement, PLACEMENT_SPECS["homepage_hero"])
 
 
+def _default_brand_guideline() -> dict[str, Any]:
+    rows = _brand_guidelines_data()
+    return rows[0] if rows else BRAND_GUIDELINES[0]
+
+
+def _brand_guideline_by_id(guideline_id: str) -> dict[str, Any]:
+    return next((item for item in _brand_guidelines_data() if item["guideline_id"] == guideline_id), _default_brand_guideline())
+
+
+def _model_option_by_id(model_id: str) -> dict[str, Any]:
+    model_options = _generation_model_options_data()
+    if model_id:
+        match = next((item for item in model_options if item["model_id"] == model_id), None)
+        if match:
+            return match
+    return next((item for item in model_options if item.get("default")), model_options[0])
+
+
+def _model_options_for_content(content_type: str) -> list[dict[str, Any]]:
+    normalized = _as_text(content_type, "image").lower()
+    model_options = _generation_model_options_data()
+    if normalized in {"video", "video_endcard", "video_end_card", "mp4"}:
+        return model_options
+    return [item for item in model_options if item.get("modality") != "video"] or model_options
+
+
+def _resolve_generation_model(payload: CreativeGenerationRequestIn) -> dict[str, Any]:
+    requested = payload.generation_model_id or payload.image_model_id
+    if not requested and _as_text(payload.content_type).lower() in {"video", "video_endcard", "video_end_card", "mp4"}:
+        requested = "runway-gen3-video-endcard"
+    return _model_option_by_id(requested)
+
+
+def _resolve_generation_models(payload: CreativeGenerationRequestIn, is_video: bool) -> list[dict[str, Any]]:
+    requested_ids = [
+        _as_text(model_id)
+        for model_id in [
+            *payload.generation_model_ids,
+            payload.generation_model_id,
+            payload.image_model_id,
+            *payload.compare_model_ids,
+        ]
+        if _as_text(model_id)
+    ]
+    seen: set[str] = set()
+    requested_models = []
+    for model_id in requested_ids:
+        model = _model_option_by_id(model_id)
+        resolved_id = _as_text(model.get("model_id"))
+        if not resolved_id or resolved_id in seen:
+            continue
+        if is_video and _as_text(model.get("modality")) != "video":
+            continue
+        if not is_video and _as_text(model.get("modality")) == "video":
+            continue
+        seen.add(resolved_id)
+        requested_models.append(model)
+    if requested_models:
+        return requested_models
+    model_options = _generation_model_options_data()
+    if is_video:
+        return [item for item in model_options if _as_text(item.get("modality")) == "video"] or [_model_option_by_id("runway-gen3-video-endcard")]
+    return [item for item in model_options if _as_text(item.get("modality")) != "video"] or [_model_option_by_id("")]
+
+
+def _is_video_content(content_type: str) -> bool:
+    return _as_text(content_type, "image").lower() in {"video", "video_endcard", "video_end_card", "mp4"}
+
+
+def _video_treatment_for(category: Any = "", placement: Any = "", variant_number: int = 1) -> dict[str, Any]:
+    category_token = _normalized_token(category)
+    if "family" in category_token:
+        base_index = 1
+    elif "premium" in category_token or "original" in category_token:
+        base_index = 2
+    elif "annual" in category_token or "upgrade" in category_token or "value" in category_token:
+        base_index = 3
+    elif "winback" in category_token or "event" in category_token:
+        base_index = 4
+    elif "sport" in category_token or "live" in category_token:
+        base_index = 0
+    else:
+        base_index = int(_stable_fraction(category, placement, variant_number) * len(VIDEO_TREATMENTS)) % len(VIDEO_TREATMENTS)
+    treatment = dict(VIDEO_TREATMENTS[(base_index + max(0, variant_number - 1)) % len(VIDEO_TREATMENTS)])
+    treatment["variant_number"] = variant_number
+    treatment["placement"] = _as_text(placement)
+    treatment["category"] = _as_text(category)
+    return treatment
+
+
+def _video_copy_for_variant(base_headline: str, base_cta: str, variant_number: int) -> tuple[str, str]:
+    headline = base_headline.strip() or "Live games. One streaming home."
+    cta = base_cta.strip() or "Start watching"
+    template, cta_template = VIDEO_COPY_VARIATIONS[(max(1, variant_number) - 1) % len(VIDEO_COPY_VARIATIONS)]
+    return template.format(base=headline, cta=cta), cta_template.format(base=headline, cta=cta)
+
+
+def _runtime_brief(brief_id: Any) -> dict[str, Any]:
+    value = _as_text(brief_id)
+    if not value:
+        return {}
+    try:
+        return next((item for item in _runtime_data()["briefs"] if _as_text(item.get("brief_id")) == value), {})
+    except Exception:
+        return next((item for item in BRIEFS if _as_text(item.get("brief_id")) == value), {})
+
+
+def _runtime_audience(cohort_id: Any) -> dict[str, Any]:
+    value = _as_text(cohort_id)
+    if not value:
+        return {}
+    try:
+        return next((item for item in _runtime_data()["audiences"] if _as_text(item.get("cohort_id")) == value), {})
+    except Exception:
+        return next((item for item in AUDIENCES if _as_text(item.get("cohort_id")) == value), {})
+
+
+def _creative_visual_treatment_for(
+    brief: dict[str, Any] | None,
+    audience: dict[str, Any] | None,
+    category: Any,
+    placement: Any,
+    variant_number: int,
+) -> dict[str, Any]:
+    brief = brief or {}
+    audience = audience or {}
+    context = _normalized_token(
+        " ".join(
+            [
+                _as_text(brief.get("brief_name")),
+                _as_text(brief.get("campaign_objective")),
+                _as_text(brief.get("target_audience_description")),
+                _as_text(audience.get("cohort_name")),
+                _as_text(audience.get("cohort_description")),
+                _as_text(category),
+                _as_text(placement),
+            ]
+        )
+    )
+    if any(token in context for token in ["family", "household", "co_viewing", "movie"]):
+        base_index = 1
+    elif any(token in context for token in ["premium", "original", "premiere", "upgrade_lookalike"]):
+        base_index = 2
+    elif any(token in context for token in ["trial", "annual", "upgrade", "conversion", "value"]):
+        base_index = 3
+    elif any(token in context for token in ["winback", "churn", "lapsed", "recover"]):
+        base_index = 4
+    elif any(token in context for token in ["sports", "live", "game", "event"]):
+        base_index = 0
+    else:
+        base_index = int(_stable_fraction(context, variant_number) * len(CREATIVE_VISUAL_TREATMENTS)) % len(CREATIVE_VISUAL_TREATMENTS)
+    treatment = dict(CREATIVE_VISUAL_TREATMENTS[(base_index + max(0, variant_number - 1)) % len(CREATIVE_VISUAL_TREATMENTS)])
+    audience_name = _as_text(audience.get("cohort_name"), "Audience segment")
+    audience_signal = _as_text(audience.get("cohort_description") or audience.get("feature_summary_text"), audience_name)
+    brief_name = _as_text(brief.get("brief_name"), "Campaign brief")
+    objective = _as_text(brief.get("campaign_objective"), "Audience-driven streaming creative")
+    placement_label = _placement_spec(_as_text(placement)).get("label", _as_text(placement, "placement"))
+    treatment.update(
+        {
+            "variant_number": variant_number,
+            "audience_name": audience_name,
+            "audience_signal": audience_signal,
+            "brief_name": brief_name,
+            "brief_signal": objective,
+            "placement": _as_text(placement),
+            "placement_label": placement_label,
+            "category": _as_text(category),
+            "headline": _as_text(treatment.get("headline"), treatment["copy_angle"]),
+            "subheadline": f"{brief_name}",
+            "supporting_copy": f"Designed for {audience_name}",
+            "cta_text": _as_text(treatment.get("cta_text"), "Watch now"),
+        }
+    )
+    return treatment
+
+
+def _creative_visual_treatment_from_record(record: dict[str, Any]) -> dict[str, Any]:
+    params = _loads_json(record.get("generation_params_json"), {})
+    if isinstance(params, dict) and isinstance(params.get("visual_treatment"), dict):
+        treatment = dict(params["visual_treatment"])
+    else:
+        treatment = {}
+    legacy_treatment_ids = {
+        "live-scorebug": "live-hero",
+        "watchlist-rail": "family-feature",
+        "premium-spotlight": "originals-spotlight",
+        "value-badge": "upgrade-offer",
+        "return-countdown": "winback-event",
+    }
+    stored_treatment_id = legacy_treatment_ids.get(_as_text(treatment.get("treatment_id")), _as_text(treatment.get("treatment_id")))
+    fallback = _creative_visual_treatment_for(
+        _runtime_brief(record.get("brief_id")),
+        _runtime_audience(record.get("cohort_id")),
+        record.get("reference_demo_category") or record.get("category") or record.get("asset_name"),
+        record.get("placement"),
+        _as_int_value(record.get("variant_number"), 1),
+    )
+    canonical = next(
+        (dict(item) for item in CREATIVE_VISUAL_TREATMENTS if _as_text(item.get("treatment_id")) == stored_treatment_id),
+        None,
+    )
+    if canonical:
+        fallback.update(
+            {
+                **canonical,
+                "headline": _as_text(canonical.get("headline"), canonical.get("copy_angle")),
+                "cta_text": _as_text(canonical.get("cta_text"), fallback.get("cta_text")),
+                "variant_number": fallback.get("variant_number"),
+                "audience_name": fallback.get("audience_name"),
+                "audience_signal": fallback.get("audience_signal"),
+                "brief_name": fallback.get("brief_name"),
+                "brief_signal": fallback.get("brief_signal"),
+                "placement": fallback.get("placement"),
+                "placement_label": fallback.get("placement_label"),
+                "category": fallback.get("category"),
+                "subheadline": fallback.get("subheadline"),
+                "supporting_copy": fallback.get("supporting_copy"),
+            }
+        )
+    return fallback
+
+
+def _svg_text_lines(value: Any, max_chars: int, max_lines: int = 2) -> list[str]:
+    words = _as_text(value).replace("\n", " ").split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+        current = word[:max_chars]
+        if len(lines) >= max_lines:
+            break
+    if current and len(lines) < max_lines:
+        lines.append(current)
+    if not lines:
+        lines.append("")
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+    if len(lines) == max_lines and words and len(" ".join(words)) > len(" ".join(lines)):
+        lines[-1] = lines[-1].rstrip(".") + "..."
+    return lines
+
+
+def _has_direct_databricks_auth() -> bool:
+    return bool(os.getenv("DATABRICKS_HOST")) and bool(
+        os.getenv("DATABRICKS_TOKEN")
+        or (os.getenv("DATABRICKS_CLIENT_ID") and os.getenv("DATABRICKS_CLIENT_SECRET"))
+    )
+
+
 IMAGE_FILE_EXTENSIONS = {".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
+
+def _demo_mp4_bytes() -> bytes:
+    # Browser-playable 20x20 H.264 MP4 fallback used when no external video renderer has written a file yet.
+    payload = (
+        "AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAtJtZGF0AAACrQYF//+p3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCByMzEwMyA5NDFjYWU2IC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyMiAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MzoweDExMyBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MSBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiB0aHJlYWRzPTEgbG9va2FoZWFkX3RocmVhZHM9MSBzbGljZWRfdGhyZWFkcz0wIG5yPTAgZGVjaW1hdGU9MSBpbnRlcmxhY2VkPTAgYmx1cmF5X2NvbXBhdD0wIGNvbnN0cmFp"
+        "bmVkX2ludHJhPTAgYmZyYW1lcz0zIGJfcHlyYW1pZD0yIGJfYWRhcHQ9MSBiX2JpYXM9MCBkaXJlY3Q9MSB3ZWlnaHRiPTEgb3Blbl9nb3A9MCB3ZWlnaHRwPTIga2V5aW50PTI1MCBrZXlpbnRfbWluPTEgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAAVZYiEABX//vfJ78Cm6/X2tb9gAQD5AAADBm1vb3YAAABsbXZoZAAAAADgYBEw4GARMAAAA+gAAAPoAAEAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAIwdHJhawAAAFx0a2hkAAAAA+BgETDgYBEwAAAAAQAAAAAAAAPoAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAUAAAAFAAAAAAAJGVkdHMAAAAcZWxzdAAAAAAAAAABAAAD6AAAAAAAAQAAAAABqG1kaWEAAAAgbWRoZAAAAADgYBEw4GARMAAAQAAAAEAAVcQAAAAAAC1oZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAAAVNtaW5mAAAAFHZtaGQAAAABAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAETc3RibAAAAK9zdHNkAAAAAAAAAAEAAACfYXZjMQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAUABQASAAAAEgAAAAAAAAAARVMYXZjNTkuNTYuMTAwIGxpYngyNjQAAAAAAAAAAAAAABj//wAAADVhdmNDAWQAM//hABhnZAAzrNlJeeeEAAADAAQAAAMACDxgxlgBAAZo6+PLIsD9+PgAAAAAFGJ0cnQAAAAAAAAWUAAAFlAAAAAYc3R0cwAAAAAAAAABAAAAAQAAQAAAAAAcc3RzYwAAAAAAAAABAAAAAQAAAAEAAAABAAAAFHN0c3oAAAAAAAACygAAAAEAAAAUc3RjbwAAAAAAAAABAAAAMAAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNTkuMzUuMTAw"
+    )
+    return base64.b64decode(payload)
 
 
 def _creative_seed_image_dir() -> Path:
@@ -2636,6 +3893,507 @@ def _download_volume_file(path: Path) -> bytes | None:
     except Exception as exc:
         DATA_BACKEND_ERRORS.append(f"volume_file: {path}: {exc}")
         return None
+
+
+def _upload_volume_file(path: Path, content: bytes) -> tuple[bool, str]:
+    if not _is_uc_volume_path(path):
+        return False, f"Not a UC Volume path: {path}"
+    try:
+        client = _workspace_client()
+        client.files.create_directory(str(path.parent))
+        client.files.upload(str(path), io.BytesIO(content), overwrite=True)
+        return True, ""
+    except Exception as exc:
+        message = f"volume_upload: {path}: {exc}"
+        DATA_BACKEND_ERRORS.append(message)
+        return False, str(exc)
+
+
+def _safe_volume_filename(value: Any, fallback: str) -> str:
+    token = _as_text(value, fallback)
+    clean = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in token)
+    return clean.strip("._") or fallback
+
+
+def _media_extension(media_type: str, fallback: str) -> str:
+    explicit = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/svg+xml": ".svg",
+        "image/webp": ".webp",
+        "video/mp4": ".mp4",
+    }.get(media_type)
+    extension = explicit or mimetypes.guess_extension(media_type) or fallback
+    return extension if extension.startswith(".") else f".{extension}"
+
+
+def _normal_slug(value: Any) -> str:
+    token = _as_text(value).lower()
+    return "_".join(part for part in "".join(char if char.isalnum() else " " for char in token).split() if part)
+
+
+def _demo_video_seed_path_from_uri(uri: Any) -> Path | None:
+    value = _as_text(uri)
+    prefix = "demo-video-seed://"
+    if not value.startswith(prefix):
+        return None
+    filename = _safe_volume_filename(value.removeprefix(prefix).split("/")[-1], "video_seed.mp4")
+    path = DEMO_VIDEO_SEED_DIR / filename
+    return path if path.exists() else None
+
+
+def _demo_video_seed_path_for_variant(variant: dict[str, Any]) -> Path | None:
+    direct = _demo_video_seed_path_from_uri(variant.get("mp4_storage_uri") or variant.get("storage_uri"))
+    if direct is not None:
+        return direct
+
+    source_ids = {
+        _as_text(variant.get("video_source_asset_id")),
+        _as_text(variant.get("reference_asset_id")),
+        _as_text(variant.get("source_asset_id")),
+        _as_text(variant.get("parent_creative_asset_id")),
+    }
+    source_ids = {item for item in source_ids if item}
+    placement = _as_text(variant.get("placement"))
+    category_slug = _normal_slug(variant.get("reference_demo_category") or variant.get("target_segment") or variant.get("asset_name"))
+    candidates = []
+    for asset in _approved_video_base_assets():
+        asset_path = _demo_video_seed_path_from_uri(asset.get("storage_uri"))
+        if asset_path is None:
+            continue
+        asset_ids = {_as_text(asset.get("asset_id")), *_asset_related_ids(asset)}
+        id_match = bool(source_ids.intersection(asset_ids))
+        placement_match = not placement or _as_text(asset.get("placement")) == placement
+        category_match = category_slug and (
+            category_slug in _normal_slug(asset.get("demo_category"))
+            or category_slug in _normal_slug(asset.get("category_slug"))
+            or _normal_slug(asset.get("category_slug")) in category_slug
+        )
+        if id_match and placement_match:
+            return asset_path
+        if placement_match and category_match:
+            candidates.append(asset_path)
+        elif id_match:
+            candidates.append(asset_path)
+    if candidates:
+        return candidates[0]
+    seed_files = sorted(DEMO_VIDEO_SEED_DIR.glob("*.mp4"))
+    if not seed_files:
+        return None
+    index = int(_stable_fraction(variant.get("creative_asset_id"), placement, category_slug) * len(seed_files))
+    return seed_files[min(index, len(seed_files) - 1)]
+
+
+def _video_media_content_for_variant(variant: dict[str, Any]) -> tuple[bytes, str, str, str]:
+    uri = _as_text(variant.get("mp4_storage_uri") or variant.get("storage_uri"))
+    seed_path = _demo_video_seed_path_for_variant(variant)
+    if seed_path is not None:
+        return seed_path.read_bytes(), "video/mp4", ".mp4", str(seed_path)
+    if uri:
+        path = Path(uri)
+        if path.exists():
+            return path.read_bytes(), "video/mp4", ".mp4", uri
+        volume_content = _download_volume_file(path)
+        if volume_content is not None:
+            return volume_content, "video/mp4", ".mp4", uri
+    if DEMO_VIDEO_ASSET.exists():
+        return DEMO_VIDEO_ASSET.read_bytes(), "video/mp4", ".mp4", str(DEMO_VIDEO_ASSET)
+    return _demo_mp4_bytes(), "video/mp4", ".mp4", "embedded_demo_mp4"
+
+
+def _image_media_content_for_variant(variant: dict[str, Any]) -> tuple[bytes, str, str, str]:
+    if variant.get("creative_asset_id"):
+        svg = _polished_variant_svg(variant).encode("utf-8")
+        return svg, "image/svg+xml", ".svg", "generated_svg_composition"
+
+    reference_asset_id = _as_text(
+        variant.get("reference_asset_id")
+        or variant.get("source_asset_id")
+        or variant.get("parent_creative_asset_id")
+    )
+    if reference_asset_id:
+        reference_image = _asset_image_content(reference_asset_id)
+        if reference_image is not None:
+            content, media_type = reference_image
+            return content, media_type, _media_extension(media_type, ".png"), reference_asset_id
+
+    for uri_key in ("thumbnail_uri", "storage_uri", "reference_thumbnail_uri"):
+        uri = _as_text(variant.get(uri_key))
+        image = _read_image_content(uri)
+        if image is not None:
+            content, media_type = image
+            return content, media_type, _media_extension(media_type, ".png"), uri
+
+    svg = _polished_variant_svg(variant).encode("utf-8")
+    return svg, "image/svg+xml", ".svg", "generated_svg_fallback"
+
+
+def _approved_asset_volume_path(variant: dict[str, Any], media_type: str, extension: str) -> Path:
+    creative_id = _safe_volume_filename(variant.get("creative_asset_id"), f"asset-{int(time.time())}")
+    asset_kind = "videos" if media_type.startswith("video/") else "images"
+    return Path(_creative_volume_uri(CREATIVE_APPROVED_ASSET_PREFIX, asset_kind, f"{creative_id}{extension}"))
+
+
+def _materialize_approved_variant_asset(variant: dict[str, Any], materialized_ts: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    is_video = _is_video_content(_as_text(variant.get("content_type"))) or _as_text(variant.get("format")).upper() == "MP4"
+    content, media_type, extension, source_uri = (
+        _video_media_content_for_variant(variant) if is_video else _image_media_content_for_variant(variant)
+    )
+    target_path = _approved_asset_volume_path(variant, media_type, extension)
+    uploaded, error = _upload_volume_file(target_path, content)
+    info = {
+        "status": "volume_uploaded" if uploaded else "volume_upload_failed",
+        "target_uri": str(target_path),
+        "source_uri": source_uri,
+        "media_type": media_type,
+        "bytes": len(content),
+        "error": error,
+    }
+    params = _loads_json(variant.get("generation_params_json"), {})
+    params = params if isinstance(params, dict) else {}
+    params.update(
+        {
+            "approved_asset_uri": str(target_path) if uploaded else "",
+            "approved_asset_media_type": media_type,
+            "approved_asset_source_uri": source_uri,
+            "approved_asset_materialized_ts": materialized_ts,
+            "asset_materialization_status": info["status"],
+            "asset_materialization_error": error,
+        }
+    )
+    updates = {
+        "asset_materialization_status": info["status"],
+        "asset_materialization_error": error,
+        "approved_asset_uri": str(target_path) if uploaded else "",
+        "approved_asset_media_type": media_type,
+        "approved_asset_bytes": len(content),
+        "generation_params_json": json.dumps(params),
+    }
+    if not uploaded:
+        return updates, info
+
+    updates.update(
+        {
+            "storage_uri": str(target_path),
+            "approved_asset_materialized_ts": materialized_ts,
+        }
+    )
+    if is_video:
+        updates.update(
+            {
+                "mp4_storage_uri": str(target_path),
+                "video_preview_uri": f"/api/creative-variants/{variant.get('creative_asset_id')}/video-preview",
+                "format": "MP4",
+            }
+        )
+    else:
+        updates.update(
+            {
+                "thumbnail_uri": str(target_path),
+                "format": extension.lstrip(".").upper(),
+            }
+        )
+    return updates, info
+
+
+def _uc_lineage_string_properties(properties: dict[str, Any]) -> dict[str, str]:
+    clean: dict[str, str] = {}
+    for key, value in properties.items():
+        if value is None or value == "":
+            continue
+        if isinstance(value, (dict, list)):
+            clean[key] = json.dumps(value, default=str, sort_keys=True)
+        else:
+            clean[key] = str(value)
+    return clean
+
+
+def _uc_external_metadata_name(variant: dict[str, Any]) -> str:
+    token = _as_text(variant.get("creative_asset_id") or variant.get("request_id"), f"asset_{int(time.time())}")
+    clean = "".join(char if char.isalnum() else "_" for char in token).strip("_")
+    return f"creative_generation_job_{clean or uuid.uuid4().hex[:12]}"
+
+
+def _uc_lineage_table_name() -> str:
+    target = UC_EXTERNAL_LINEAGE_TARGET_TABLE.strip()
+    if target.count(".") == 2:
+        return target.replace("`", "")
+    return _pipeline_table(target or "gold_buyside_creative_variant").replace("`", "")
+
+
+def _uc_lineage_error_text(error: Exception) -> str:
+    message = str(error)
+    return " ".join(message.split())[:1000]
+
+
+def _is_databricks_not_found(error: Exception) -> bool:
+    message = _uc_lineage_error_text(error).lower()
+    return "not_found" in message or "resource_does_not_exist" in message or "404" in message
+
+
+def _is_databricks_already_exists(error: Exception) -> bool:
+    message = _uc_lineage_error_text(error).lower()
+    return "already_exists" in message or "already exists" in message or "409" in message
+
+
+def _get_uc_external_metadata(name: str) -> dict[str, Any] | None:
+    try:
+        return _workspace_client().api_client.do(
+            "GET",
+            f"/api/2.0/lineage-tracking/external-metadata/{quote(name, safe='')}",
+        )
+    except Exception as exc:
+        if _is_databricks_not_found(exc):
+            return None
+        raise
+
+
+def _ensure_uc_external_metadata(name: str, variant: dict[str, Any], base_path: str, final_path: str) -> dict[str, Any]:
+    existing = _get_uc_external_metadata(name)
+    if existing:
+        return {"status": "already_exists", "name": name, "metadata": existing}
+
+    properties = _uc_lineage_string_properties(
+        {
+            "creative_asset_id": variant.get("creative_asset_id"),
+            "request_id": variant.get("request_id"),
+            "brief_id": variant.get("brief_id"),
+            "cohort_id": variant.get("cohort_id"),
+            "placement": variant.get("placement"),
+            "source_asset_id": variant.get("source_asset_id") or variant.get("reference_asset_id"),
+            "base_image_path": base_path,
+            "final_image_path": final_path,
+            "generation_model": variant.get("generation_model"),
+            "generation_model_id": variant.get("generation_model_id"),
+            "brand_guideline_id": variant.get("brand_guideline_id"),
+            "target_table": _uc_lineage_table_name(),
+        }
+    )
+    body = {
+        "name": name,
+        "system_type": UC_EXTERNAL_LINEAGE_SYSTEM_TYPE,
+        "entity_type": UC_EXTERNAL_LINEAGE_ENTITY_TYPE,
+        "description": "Creative generation workflow node connecting governed base media, generated final asset, and Delta metadata.",
+        "columns": [
+            "creative_asset_id",
+            "request_id",
+            "source_asset_id",
+            "storage_uri",
+            "generation_model",
+            "approval_status",
+        ],
+        "properties": properties,
+    }
+    try:
+        created = _workspace_client().api_client.do(
+            "POST",
+            "/api/2.0/lineage-tracking/external-metadata",
+            body=body,
+        )
+        return {"status": "created", "name": name, "metadata": created}
+    except Exception as exc:
+        if _is_databricks_already_exists(exc):
+            existing_after_race = _get_uc_external_metadata(name) or {"name": name}
+            return {"status": "already_exists", "name": name, "metadata": existing_after_race}
+        raise
+
+
+def _create_uc_external_lineage_relationship(
+    source: dict[str, Any],
+    target: dict[str, Any],
+    relationship_type: str,
+    variant: dict[str, Any],
+    extra_properties: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    properties = _uc_lineage_string_properties(
+        {
+            "relationship_type": relationship_type,
+            "creative_asset_id": variant.get("creative_asset_id"),
+            "request_id": variant.get("request_id"),
+            "source_asset_id": variant.get("source_asset_id") or variant.get("reference_asset_id"),
+            "placement": variant.get("placement"),
+            "generation_model": variant.get("generation_model"),
+            **(extra_properties or {}),
+        }
+    )
+    body = {
+        "source": source,
+        "target": target,
+        "properties": properties,
+        "columns": [],
+    }
+    try:
+        relationship = _workspace_client().api_client.do(
+            "POST",
+            "/api/2.0/lineage-tracking/external-lineage",
+            body=body,
+        )
+        return {
+            "status": "created",
+            "relationship_type": relationship_type,
+            "relationship_id": relationship.get("id"),
+            "source": source,
+            "target": target,
+        }
+    except Exception as exc:
+        if _is_databricks_already_exists(exc):
+            return {
+                "status": "already_exists",
+                "relationship_type": relationship_type,
+                "relationship_id": "",
+                "source": source,
+                "target": target,
+            }
+        return {
+            "status": "error",
+            "relationship_type": relationship_type,
+            "relationship_id": "",
+            "source": source,
+            "target": target,
+            "error": _uc_lineage_error_text(exc),
+        }
+
+
+def _variant_base_volume_path(variant: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
+    workflow = _creative_workflow_data()
+    reference_asset_id = _as_text(
+        variant.get("reference_asset_id")
+        or variant.get("source_asset_id")
+        or variant.get("parent_creative_asset_id")
+    )
+    reference_asset = _find_asset_by_any_id(workflow["base_assets"], reference_asset_id)
+    candidates = [
+        variant.get("reference_thumbnail_uri"),
+        (reference_asset or {}).get("thumbnail_uri"),
+        (reference_asset or {}).get("storage_uri"),
+    ]
+    for candidate in candidates:
+        value = _as_text(candidate)
+        if value.startswith("/Volumes/"):
+            return value, reference_asset
+    return "", reference_asset
+
+
+def _publish_uc_external_lineage_for_variant(
+    variant: dict[str, Any],
+    asset_materialization: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not UC_EXTERNAL_LINEAGE_ENABLED:
+        info = {
+            "enabled": False,
+            "status": "skipped",
+            "reason": "UC_EXTERNAL_LINEAGE_ENABLED is not true",
+            "metadata_name": "",
+            "relationships": [],
+        }
+        return {}, info
+
+    final_path = _as_text(
+        asset_materialization.get("target_uri")
+        or variant.get("approved_asset_uri")
+        or variant.get("storage_uri")
+    )
+    if not final_path.startswith("/Volumes/"):
+        info = {
+            "enabled": True,
+            "status": "skipped",
+            "reason": "final asset is not a UC Volume path",
+            "metadata_name": "",
+            "relationships": [],
+            "final_path": final_path,
+        }
+        return {}, info
+
+    base_path, reference_asset = _variant_base_volume_path(variant)
+    metadata_name = _uc_external_metadata_name(variant)
+    relationships: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    try:
+        metadata_result = _ensure_uc_external_metadata(metadata_name, variant, base_path, final_path)
+    except Exception as exc:
+        error = _uc_lineage_error_text(exc)
+        DATA_BACKEND_ERRORS.append(f"uc_external_lineage_metadata: {metadata_name}: {error}")
+        info = {
+            "enabled": True,
+            "status": "error",
+            "reason": error,
+            "metadata_name": metadata_name,
+            "relationships": [],
+            "base_path": base_path,
+            "final_path": final_path,
+        }
+        return _uc_external_lineage_variant_updates(variant, info), info
+
+    job_object = {"external_metadata": {"name": metadata_name}}
+    final_path_object = {"path": {"url": final_path}}
+    table_object = {"table": {"name": _uc_lineage_table_name()}}
+    if base_path:
+        relationships.append(
+            _create_uc_external_lineage_relationship(
+                {"path": {"url": base_path}},
+                job_object,
+                "base_image_path_to_generation_job",
+                variant,
+                {"base_asset_name": (reference_asset or {}).get("asset_name"), "base_path": base_path},
+            )
+        )
+    else:
+        warnings.append("base_path_missing")
+
+    relationships.append(
+        _create_uc_external_lineage_relationship(
+            job_object,
+            final_path_object,
+            "generation_job_to_final_image_path",
+            variant,
+            {"final_path": final_path},
+        )
+    )
+    relationships.append(
+        _create_uc_external_lineage_relationship(
+            final_path_object,
+            table_object,
+            "final_image_path_to_generated_creative_table",
+            variant,
+            {"target_table": _uc_lineage_table_name()},
+        )
+    )
+
+    relationship_errors = [item for item in relationships if item.get("status") == "error"]
+    if relationship_errors:
+        status = "partial" if len(relationship_errors) < len(relationships) else "error"
+        DATA_BACKEND_ERRORS.append(
+            f"uc_external_lineage_relationships: {metadata_name}: "
+            + "; ".join(_as_text(item.get("error")) for item in relationship_errors)
+        )
+    else:
+        status = "published"
+
+    info = {
+        "enabled": True,
+        "status": status,
+        "metadata_name": metadata_name,
+        "metadata_status": metadata_result.get("status"),
+        "relationships": relationships,
+        "relationship_ids": [item.get("relationship_id") for item in relationships if item.get("relationship_id")],
+        "warnings": warnings,
+        "base_path": base_path,
+        "final_path": final_path,
+        "target_table": _uc_lineage_table_name(),
+    }
+    return _uc_external_lineage_variant_updates(variant, info), info
+
+
+def _uc_external_lineage_variant_updates(variant: dict[str, Any], info: dict[str, Any]) -> dict[str, Any]:
+    params = _loads_json(variant.get("generation_params_json"), {})
+    params = params if isinstance(params, dict) else {}
+    params["uc_external_lineage"] = info
+    return {
+        "uc_external_lineage_status": info.get("status", ""),
+        "uc_external_lineage_metadata_name": info.get("metadata_name", ""),
+        "uc_external_lineage_error": info.get("reason", ""),
+        "generation_params_json": json.dumps(params),
+    }
 
 
 def _read_image_content(uri: str) -> tuple[bytes, str] | None:
@@ -2663,6 +4421,14 @@ def _list_seed_image_paths(seed_dir: Path) -> list[Path]:
     if seed_dir.exists():
         return sorted(path for path in seed_dir.iterdir() if path.suffix.lower() in IMAGE_FILE_EXTENSIONS)
     if not _is_uc_volume_path(seed_dir):
+        return []
+    if not _has_direct_databricks_auth() and not Path("/databricks").exists():
+        DATA_LOAD_SOURCES["creative_seed_images"] = {
+            "source": "embedded_fallback",
+            "path": str(seed_dir),
+            "rows": 0,
+            "loaded": False,
+        }
         return []
     try:
         entries = _workspace_client().files.list_directory_contents(str(seed_dir))
@@ -2813,9 +4579,106 @@ def _seed_image_assets() -> list[dict[str, Any]]:
     return []
 
 
+VIDEO_BASE_ASSET_CATEGORIES = [
+    {
+        "slug": "live_sports",
+        "demo_category": "Live Sports",
+        "description": "Approved live sports MP4 preview seed for end-card generation.",
+        "tags": ["sports", "live_events", "appointment_viewing"],
+    },
+    {
+        "slug": "family_movie_night",
+        "demo_category": "Family Movie Night",
+        "description": "Approved family co-viewing MP4 preview seed for weekend streaming campaigns.",
+        "tags": ["family", "movies", "weekend"],
+    },
+    {
+        "slug": "premium_originals",
+        "demo_category": "Premium Originals",
+        "description": "Approved premium originals MP4 preview seed for series discovery and upgrade messaging.",
+        "tags": ["premium", "originals", "series"],
+    },
+    {
+        "slug": "annual_upgrade",
+        "demo_category": "Annual Upgrade",
+        "description": "Approved subscription upgrade MP4 preview seed for annual-plan conversion.",
+        "tags": ["upgrade", "annual_plan", "value"],
+    },
+    {
+        "slug": "winback_live_events",
+        "demo_category": "Winback Live Events",
+        "description": "Approved winback MP4 preview seed for lapsed subscribers and tentpole live events.",
+        "tags": ["winback", "live_events", "reactivation"],
+    },
+]
+VIDEO_SEED_SAMPLE_DURATION_SECONDS = 6
+
+
+def _approved_video_base_assets() -> list[dict[str, Any]]:
+    video_placements = ["ctv_15s", "youtube_15s", "social_video_15s"]
+    rows = []
+    for category_index, category in enumerate(VIDEO_BASE_ASSET_CATEGORIES):
+        for placement in video_placements:
+            spec = _placement_spec(placement)
+            asset_id = f"VID-BASE-{len(rows) + 1:04d}"
+            filename = f"{category['slug']}_{placement}.mp4"
+            poster_name = f"{category['slug']}_{placement}_poster.svg"
+            treatment = _video_treatment_for(category["demo_category"], placement, category_index + 1)
+            tags = [
+                "video_seed",
+                "approved",
+                "governed",
+                "brand_safe",
+                placement,
+                category["slug"],
+                *category["tags"],
+            ]
+            rows.append(
+                {
+                    "asset_id": asset_id,
+                    "asset_name": f"{category['demo_category']} {spec['label']} Video Seed",
+                    "asset_type": "video",
+                    "storage_uri": f"demo-video-seed://{filename}",
+                    "thumbnail_uri": _creative_volume_uri("video_seed_posters", poster_name),
+                    "video_preview_uri": f"/api/creative-assets/{asset_id}/video-preview",
+                    "video_treatment_json": json.dumps(treatment),
+                    "format": "mp4",
+                    "width_px": spec["width_px"],
+                    "height_px": spec["height_px"],
+                    "duration_sec": VIDEO_SEED_SAMPLE_DURATION_SECONDS,
+                    "aspect_ratio": spec["aspect_ratio"],
+                    "placement": placement,
+                    "demo_category": category["demo_category"],
+                    "category_slug": category["slug"],
+                    "related_asset_ids": [asset_id],
+                    "content_tags": ",".join(tags),
+                    "description": category["description"],
+                    "recommended_usage": f"Use as a governed video seed for {category['demo_category']} {spec['label']} variants.",
+                    "source_system": "approved_demo_video_seed_library",
+                    "source_asset_external_id": filename,
+                    "rights_profile_id": "RIGHTS-VIDEO-001",
+                    "approved_usage_contexts_json": json.dumps(spec["channels"]),
+                    "historical_performance_json": json.dumps(
+                        {
+                            "video_completion_rate": round(0.61 + category_index * 0.025 + _stable_fraction(asset_id, "vcr") * 0.08, 3),
+                            "ctr": round(0.84 + _stable_fraction(asset_id, "ctr") * 0.36, 2),
+                        }
+                    ),
+                    "brand_safety_score": 92 + int(_stable_fraction(asset_id, "safety") * 5),
+                    "status": "active",
+                    "created_ts": "2026-06-03",
+                    "updated_ts": "2026-06-03",
+                }
+            )
+    return rows
+
+
 def _governed_retrieval_assets() -> list[dict[str, Any]]:
     seed_assets = _seed_image_assets()
-    return seed_assets or _creative_workflow_data()["base_assets"]
+    video_assets = _approved_video_base_assets()
+    if seed_assets:
+        return _dedupe_assets([*seed_assets, *video_assets])
+    return _dedupe_assets([*_creative_workflow_data()["base_assets"], *video_assets])
 
 
 def _asset_related_ids(asset: dict[str, Any]) -> set[str]:
@@ -2829,41 +4692,69 @@ def _asset_related_ids(asset: dict[str, Any]) -> set[str]:
 
 def _seed_asset_by_any_id() -> dict[str, dict[str, Any]]:
     lookup: dict[str, dict[str, Any]] = {}
-    for asset in _seed_image_assets():
+    seed_assets = _seed_image_assets()
+    for asset in [*seed_assets, *_approved_video_base_assets()]:
         for asset_id in _asset_related_ids(asset):
             lookup[asset_id] = asset
+    if seed_assets:
+        by_placement: dict[str, list[dict[str, Any]]] = {}
+        for asset in seed_assets:
+            by_placement.setdefault(_normalized_token(asset.get("placement")), []).append(asset)
+        for base_asset in _creative_workflow_data()["base_assets"]:
+            asset_id = _as_text(base_asset.get("asset_id"))
+            if not asset_id or asset_id in lookup:
+                continue
+            placement = _normalized_token(base_asset.get("placement"))
+            if not placement:
+                tags = _normalized_token(base_asset.get("content_tags"))
+                placement = next((key for key in PLACEMENT_SPECS if key in tags), "")
+            matches = by_placement.get(placement, [])
+            if matches:
+                offset = max(0, _as_int_value(asset_id.replace("BASE-", ""), 1) - 1)
+                lookup[asset_id] = matches[offset % len(matches)]
     return lookup
+
+
+def _asset_image_record(asset_id: str) -> dict[str, Any] | None:
+    resolved_asset_id = _as_text(asset_id)
+    if not resolved_asset_id:
+        return None
+
+    record = _seed_asset_by_any_id().get(resolved_asset_id)
+    if record is not None:
+        return record
+
+    record = next(
+        (
+            asset
+            for asset in _governed_retrieval_assets()
+            if resolved_asset_id in _asset_related_ids(asset)
+        ),
+        None,
+    )
+    if record is not None:
+        return record
+
+    return next(
+        (
+            asset
+            for asset in _creative_workflow_data()["base_assets"]
+            if resolved_asset_id in _asset_related_ids(asset)
+        ),
+        None,
+    )
+
+
+def _asset_image_content(asset_id: str) -> tuple[bytes, str] | None:
+    record = _asset_image_record(asset_id)
+    if record is None:
+        return None
+    return _read_image_content(_as_text(record.get("thumbnail_uri") or record.get("storage_uri")))
 
 
 @lru_cache(maxsize=128)
 def _asset_image_data_uri(asset_id: str) -> str:
-    resolved_asset_id = _as_text(asset_id)
-    if not resolved_asset_id:
-        return ""
-
-    record = _seed_asset_by_any_id().get(resolved_asset_id)
-    if record is None:
-        record = next(
-            (
-                asset
-                for asset in _governed_retrieval_assets()
-                if resolved_asset_id in _asset_related_ids(asset)
-            ),
-            None,
-        )
-    if record is None:
-        record = next(
-            (
-                asset
-                for asset in _creative_workflow_data()["base_assets"]
-                if resolved_asset_id in _asset_related_ids(asset)
-            ),
-            None,
-        )
-    if record is None:
-        return ""
-
-    image = _read_image_content(_as_text(record.get("thumbnail_uri") or record.get("storage_uri")))
+    image = _asset_image_content(asset_id)
     if image is None:
         return ""
     content, media_type = image
@@ -2916,25 +4807,35 @@ def _dedupe_assets(assets: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return unique
 
 
-def _fallback_reference_assets(placement: str, category: str, selected_asset_ids: list[str], limit: int) -> list[dict[str, Any]]:
-    seed_assets = _seed_image_assets()
+def _fallback_reference_assets(
+    placement: str,
+    category: str,
+    selected_asset_ids: list[str],
+    limit: int,
+    content_type: str = "image",
+) -> list[dict[str, Any]]:
+    assets = _governed_retrieval_assets()
+    preferred_asset_type = "video" if _is_video_content(content_type) else "image"
+    preferred_assets = [
+        asset for asset in assets if _as_text(asset.get("asset_type")).lower() == preferred_asset_type
+    ] or assets
     lookup = _seed_asset_by_any_id()
     selected = [lookup[asset_id] for asset_id in selected_asset_ids if asset_id in lookup]
     contextual_selected = [
         asset for asset in selected if _asset_matches_generation_context(asset, placement, category)
     ]
     category_matches = [
-        asset for asset in seed_assets if _asset_matches_generation_context(asset, placement, category)
+        asset for asset in preferred_assets if _asset_matches_generation_context(asset, placement, category)
     ]
     placement_matches = [
-        asset for asset in seed_assets if _asset_matches_generation_context(asset, placement)
+        asset for asset in preferred_assets if _asset_matches_generation_context(asset, placement)
     ]
     category_token = _normalized_token(category)
     if category_token and category_token != "all" and (contextual_selected or category_matches):
         return _dedupe_assets(contextual_selected + category_matches)[:limit]
     if placement_matches:
         return _dedupe_assets(selected + placement_matches)[:limit]
-    return _dedupe_assets(selected + seed_assets)[:limit]
+    return _dedupe_assets(selected + preferred_assets)[:limit]
 
 
 def _retrieve_generation_reference_assets(
@@ -2943,6 +4844,7 @@ def _retrieve_generation_reference_assets(
     limit: int = 4,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     category = payload.category.strip()
+    is_video = _is_video_content(payload.content_type)
     query = " ".join(
         item
         for item in [
@@ -2951,7 +4853,7 @@ def _retrieve_generation_reference_assets(
             cohort_name,
             payload.retrieval_query,
             payload.user_instructions,
-            "governed seed image reference creative asset",
+            "governed video seed reference creative asset" if is_video else "governed seed image reference creative asset",
         ]
         if item
     )
@@ -2966,7 +4868,7 @@ def _retrieve_generation_reference_assets(
     candidates: list[dict[str, Any]] = []
     lookup = _seed_asset_by_any_id()
 
-    if CREATIVE_VECTOR_SEARCH_INDEX:
+    if CREATIVE_VECTOR_SEARCH_INDEX and (_has_direct_databricks_auth() or Path("/databricks").exists()):
         try:
             response = _workspace_client().vector_search_indexes.query_index(
                 index_name=CREATIVE_VECTOR_SEARCH_INDEX,
@@ -2989,7 +4891,10 @@ def _retrieve_generation_reference_assets(
             for row in rows:
                 vector_asset_id = _as_text(row.get("asset_id"))
                 asset = lookup.get(vector_asset_id)
-                if asset and _asset_matches_generation_context(asset, payload.placement, category):
+                asset_type_matches = bool(asset) and (
+                    not is_video or _as_text(asset.get("asset_type")).lower() == "video"
+                )
+                if asset and asset_type_matches and _asset_matches_generation_context(asset, payload.placement, category):
                     candidates.append(
                         {
                             **asset,
@@ -3001,8 +4906,10 @@ def _retrieve_generation_reference_assets(
         except Exception as exc:
             retrieval["error"] = str(exc)
             DATA_BACKEND_ERRORS.append(f"creative_vector_search: {exc}")
+    elif CREATIVE_VECTOR_SEARCH_INDEX:
+        retrieval["error"] = "Databricks auth environment is not present; using governed fallback seed assets."
 
-    fallback = _fallback_reference_assets(payload.placement, category, payload.selected_base_asset_ids, limit)
+    fallback = _fallback_reference_assets(payload.placement, category, payload.selected_base_asset_ids, limit, payload.content_type)
     reference_assets = _dedupe_assets(candidates + fallback)[:limit]
     return reference_assets, retrieval
 
@@ -3018,29 +4925,237 @@ def _reference_variant_svg(record: dict[str, Any]) -> str:
     variant_number = _as_int_value(record.get("variant_number"), 1)
     source_id = _as_text(record.get("reference_asset_id") or record.get("source_asset_id"), "BASE-0001")
     reference_name = escape(_as_text(record.get("reference_asset_name"), "Seed image reference")[:72])
-    title = escape(_as_text(record.get("asset_name"), "Generated variant")[:58])
-    accent = ["#0f9f95", "#256b8f", "#c7793a", "#5b65d8", "#1f9d72"][variant_number % 5]
+    visual = _creative_visual_treatment_from_record(record)
+    accent = _as_text(visual.get("accent"), ["#0f9f95", "#256b8f", "#c7793a", "#5b65d8", "#1f9d72"][variant_number % 5])
+    secondary = _as_text(visual.get("secondary"), "#13212d")
+    treatment_id = _as_text(visual.get("treatment_id"))
+    layout = _as_text(visual.get("layout"), "left-stack")
+    badge = escape(_as_text(visual.get("badge"), f"V{variant_number}")[:18])
+    element_primary = escape(_as_text(visual.get("element_primary"), "generated overlay")[:44])
+    element_secondary = escape(_as_text(visual.get("element_secondary"), "audience cue")[:44])
+    title_lines = _svg_text_lines(visual.get("headline") or record.get("asset_name"), 34 if width >= height else 22, 2)
+    subtitle_lines = _svg_text_lines(visual.get("audience_signal") or record.get("target_segment"), 42 if width >= height else 28, 2)
+    objective_lines = _svg_text_lines(visual.get("brief_signal") or record.get("generation_prompt"), 48 if width >= height else 30, 2)
     image_href = _asset_image_data_uri(source_id)
     if image_href:
         image_markup = f'  <image href="{escape(image_href, quote=True)}" x="0" y="0" width="{width}" height="{height}" preserveAspectRatio="xMidYMid slice"/>'
     else:
         image_markup = f'  <rect width="{width}" height="{height}" fill="#d7dde1"/>'
+    margin_x = int(width * 0.065)
+    margin_y = int(height * 0.075)
+    card_width = int(width * (0.54 if width >= height else 0.78))
+    card_height = int(height * (0.42 if width >= height else 0.34))
+    if layout in {"right-offer", "split-countdown"} and width >= height:
+        card_x = width - margin_x - card_width
+    elif layout == "center-lockup":
+        card_x = int((width - card_width) / 2)
+    else:
+        card_x = margin_x
+    card_y = int(height * (0.46 if layout == "bottom-rail" else 0.13))
+    text_x = card_x + int(width * 0.028)
+    text_y = card_y + int(height * 0.095)
+    headline_size = max(26, int(width * (0.035 if width >= height else 0.052)))
+    body_size = max(15, int(width * (0.014 if width >= height else 0.025)))
+    small_size = max(12, int(width * (0.011 if width >= height else 0.020)))
+
+    def text_lines_markup(lines: list[str], x: int, y: int, size: int, color: str, weight: int = 800, gap: float = 1.18) -> str:
+        return "\n".join(
+            f'  <text x="{x}" y="{int(y + index * size * gap)}" fill="{color}" font-family="Inter, Arial, sans-serif" font-size="{size}" font-weight="{weight}">{escape(line)}</text>'
+            for index, line in enumerate(lines)
+            if line
+        )
+
+    if treatment_id == "watchlist-rail":
+        visual_elements = f"""
+  <g opacity="0.96">
+    <rect x="{int(width * 0.10)}" y="{int(height * 0.70)}" width="{int(width * 0.22)}" height="{int(height * 0.18)}" rx="18" fill="#ffffff" opacity="0.88"/>
+    <rect x="{int(width * 0.35)}" y="{int(height * 0.66)}" width="{int(width * 0.22)}" height="{int(height * 0.22)}" rx="18" fill="{accent}" opacity="0.92"/>
+    <rect x="{int(width * 0.60)}" y="{int(height * 0.70)}" width="{int(width * 0.22)}" height="{int(height * 0.18)}" rx="18" fill="#ffffff" opacity="0.88"/>
+    <text x="{int(width * 0.13)}" y="{int(height * 0.80)}" fill="{secondary}" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="800">PROFILE 1</text>
+    <text x="{int(width * 0.39)}" y="{int(height * 0.79)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="800">WATCHLIST</text>
+    <text x="{int(width * 0.63)}" y="{int(height * 0.80)}" fill="{secondary}" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="800">PROFILE 2</text>
+  </g>"""
+    elif treatment_id == "premium-spotlight":
+        visual_elements = f"""
+  <g opacity="0.92">
+    <ellipse cx="{int(width * 0.68)}" cy="{int(height * 0.50)}" rx="{int(width * 0.16)}" ry="{int(height * 0.27)}" fill="{accent}" opacity="0.24"/>
+    <path d="M {int(width * 0.54)} {int(height * 0.08)} L {int(width * 0.82)} {int(height * 0.08)} L {int(width * 0.76)} {int(height * 0.88)} L {int(width * 0.46)} {int(height * 0.88)} Z" fill="#ffffff" opacity="0.16"/>
+    <rect x="{int(width * 0.60)}" y="{int(height * 0.40)}" width="{int(width * 0.28)}" height="{int(height * 0.14)}" rx="18" fill="{secondary}" opacity="0.88"/>
+    <text x="{int(width * 0.63)}" y="{int(height * 0.49)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{body_size}" font-weight="900">NEW ORIGINAL</text>
+  </g>"""
+    elif treatment_id == "value-badge":
+        visual_elements = f"""
+  <g opacity="0.96">
+    <circle cx="{int(width * 0.78)}" cy="{int(height * 0.30)}" r="{int(min(width, height) * 0.15)}" fill="{accent}" opacity="0.92"/>
+    <circle cx="{int(width * 0.78)}" cy="{int(height * 0.30)}" r="{int(min(width, height) * 0.11)}" fill="#ffffff" opacity="0.18"/>
+    <text x="{int(width * 0.72)}" y="{int(height * 0.29)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{body_size}" font-weight="900">ANNUAL</text>
+    <text x="{int(width * 0.72)}" y="{int(height * 0.35)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="800">VALUE</text>
+    <rect x="{int(width * 0.66)}" y="{int(height * 0.52)}" width="{int(width * 0.25)}" height="{int(height * 0.18)}" rx="16" fill="#ffffff" opacity="0.86"/>
+    <text x="{int(width * 0.69)}" y="{int(height * 0.60)}" fill="{secondary}" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="800">+ Live sports</text>
+    <text x="{int(width * 0.69)}" y="{int(height * 0.66)}" fill="{secondary}" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="800">+ Premium originals</text>
+  </g>"""
+    elif treatment_id == "return-countdown":
+        visual_elements = f"""
+  <g opacity="0.96">
+    <rect x="{int(width * 0.63)}" y="{int(height * 0.16)}" width="{int(width * 0.09)}" height="{int(height * 0.14)}" rx="12" fill="{secondary}" opacity="0.90"/>
+    <rect x="{int(width * 0.74)}" y="{int(height * 0.16)}" width="{int(width * 0.09)}" height="{int(height * 0.14)}" rx="12" fill="{accent}" opacity="0.94"/>
+    <rect x="{int(width * 0.85)}" y="{int(height * 0.16)}" width="{int(width * 0.09)}" height="{int(height * 0.14)}" rx="12" fill="{secondary}" opacity="0.90"/>
+    <text x="{int(width * 0.655)}" y="{int(height * 0.25)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{body_size}" font-weight="900">03</text>
+    <text x="{int(width * 0.765)}" y="{int(height * 0.25)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{body_size}" font-weight="900">12</text>
+    <text x="{int(width * 0.875)}" y="{int(height * 0.25)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{body_size}" font-weight="900">45</text>
+  </g>"""
+    else:
+        visual_elements = f"""
+  <g opacity="0.96">
+    <rect x="{int(width * 0.58)}" y="{int(height * 0.12)}" width="{int(width * 0.34)}" height="{int(height * 0.12)}" rx="14" fill="{secondary}" opacity="0.90"/>
+    <rect x="{int(width * 0.58)}" y="{int(height * 0.24)}" width="{int(width * 0.34)}" height="{int(height * 0.055)}" fill="{accent}" opacity="0.94"/>
+    <text x="{int(width * 0.61)}" y="{int(height * 0.20)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{body_size}" font-weight="900">LIVE  Q4  02:18</text>
+    <text x="{int(width * 0.61)}" y="{int(height * 0.28)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="800">STREAMING NOW</text>
+  </g>"""
+
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
   <defs>
     <linearGradient id="overlay" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#071523" stop-opacity="0.10"/>
-      <stop offset="0.68" stop-color="#071523" stop-opacity="0.26"/>
-      <stop offset="1" stop-color="{accent}" stop-opacity="0.46"/>
+      <stop offset="0" stop-color="#071523" stop-opacity="0.18"/>
+      <stop offset="0.58" stop-color="#071523" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="{accent}" stop-opacity="0.62"/>
     </linearGradient>
+    <pattern id="variantPattern" width="72" height="72" patternUnits="userSpaceOnUse">
+      <path d="M 72 0 L 0 0 0 72" fill="none" stroke="{accent}" stroke-opacity="0.22" stroke-width="3"/>
+      <circle cx="58" cy="16" r="4" fill="#ffffff" opacity="0.26"/>
+    </pattern>
   </defs>
 {image_markup}
   <rect width="{width}" height="{height}" fill="url(#overlay)"/>
-  <rect x="{int(width * 0.055)}" y="{int(height * 0.075)}" width="{int(width * 0.44)}" height="{max(72, int(height * 0.14))}" rx="18" fill="rgba(7,21,35,0.70)"/>
-  <text x="{int(width * 0.08)}" y="{int(height * 0.13)}" fill="white" font-family="Inter, Arial, sans-serif" font-size="{max(22, int(width * 0.026))}" font-weight="800">Variant {variant_number}</text>
-  <text x="{int(width * 0.08)}" y="{int(height * 0.19)}" fill="rgba(255,255,255,0.82)" font-family="Inter, Arial, sans-serif" font-size="{max(14, int(width * 0.014))}" font-weight="650">{reference_name}</text>
-  <rect x="{int(width * 0.055)}" y="{int(height * 0.78)}" width="{int(width * 0.58)}" height="{max(70, int(height * 0.12))}" rx="18" fill="rgba(255,255,255,0.86)"/>
-  <text x="{int(width * 0.08)}" y="{int(height * 0.835)}" fill="#13212d" font-family="Inter, Arial, sans-serif" font-size="{max(18, int(width * 0.020))}" font-weight="800">{title}</text>
-  <text x="{int(width * 0.08)}" y="{int(height * 0.885)}" fill="#5f6470" font-family="Inter, Arial, sans-serif" font-size="{max(12, int(width * 0.012))}" font-weight="700">RAG reference: {escape(source_id)}</text>
+  <rect width="{width}" height="{height}" fill="url(#variantPattern)" opacity="0.42"/>
+{visual_elements}
+  <rect x="{card_x}" y="{card_y}" width="{card_width}" height="{card_height}" rx="24" fill="#ffffff" opacity="0.92"/>
+  <rect x="{card_x}" y="{card_y}" width="{max(8, int(width * 0.010))}" height="{card_height}" rx="8" fill="{accent}"/>
+  <rect x="{text_x}" y="{int(card_y + height * 0.035)}" width="{int(width * 0.15)}" height="{max(30, int(height * 0.048))}" rx="12" fill="{secondary}" opacity="0.94"/>
+  <text x="{int(text_x + width * 0.018)}" y="{int(card_y + height * 0.068)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="900">{badge} V{variant_number}</text>
+{text_lines_markup(title_lines, text_x, text_y, headline_size, "#13212d", 900)}
+{text_lines_markup(subtitle_lines, text_x, int(text_y + headline_size * 2.55), body_size, "#4d5560", 740)}
+  <rect x="{text_x}" y="{int(card_y + card_height - height * 0.108)}" width="{int(card_width * 0.72)}" height="{max(40, int(height * 0.070))}" rx="14" fill="{accent}" opacity="0.12"/>
+  <text x="{int(text_x + width * 0.016)}" y="{int(card_y + card_height - height * 0.063)}" fill="{secondary}" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="850">{element_primary}</text>
+  <text x="{int(text_x + width * 0.016)}" y="{int(card_y + card_height - height * 0.028)}" fill="#5f6470" font-family="Inter, Arial, sans-serif" font-size="{max(10, int(small_size * 0.82))}" font-weight="720">{element_secondary}</text>
+  <rect x="{margin_x}" y="{int(height * 0.905)}" width="{int(width * 0.52)}" height="{max(34, int(height * 0.052))}" rx="12" fill="#071523" opacity="0.72"/>
+  <text x="{int(margin_x + width * 0.018)}" y="{int(height * 0.938)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="760">Brief: {escape(objective_lines[0])}</text>
+  <text x="{int(width * 0.70)}" y="{int(height * 0.938)}" fill="#ffffff" opacity="0.76" font-family="Inter, Arial, sans-serif" font-size="{max(10, int(small_size * 0.82))}" font-weight="720">Seed: {reference_name}</text>
+</svg>"""
+
+
+def _polished_variant_svg(record: dict[str, Any]) -> str:
+    ratio = _as_text(record.get("aspect_ratio"), "16:9")
+    width, height = {
+        "1:1": (1080, 1080),
+        "9:16": (1080, 1920),
+        "6:1": (1200, 200),
+        "4:5": (1080, 1350),
+    }.get(ratio, (1280, 720))
+    variant_number = _as_int_value(record.get("variant_number"), 1)
+    source_id = _as_text(record.get("reference_asset_id") or record.get("source_asset_id"), "BASE-0001")
+    visual = _creative_visual_treatment_from_record(record)
+    accent = _as_text(visual.get("accent"), "#0f9f95")
+    secondary = _as_text(visual.get("secondary"), "#13212d")
+    layout = _as_text(visual.get("layout"), "left-panel")
+    badge = escape(_as_text(visual.get("badge"), f"V{variant_number}")[:14])
+    treatment_name = escape(_as_text(visual.get("name"), "Variant")[:26])
+    cta_text = escape(_as_text(visual.get("cta_text"), "Watch now")[:18])
+    headline_lines = _svg_text_lines(visual.get("headline") or record.get("asset_name"), 24 if width >= height else 17, 2)
+    support_lines = _svg_text_lines(visual.get("supporting_copy") or visual.get("audience_name"), 38 if width >= height else 24, 1)
+    brief_lines = _svg_text_lines(visual.get("brief_name") or record.get("generation_prompt"), 34 if width >= height else 22, 1)
+    image_href = _asset_image_data_uri(source_id)
+    if image_href:
+        image_markup = f'  <image href="{escape(image_href, quote=True)}" x="0" y="0" width="{width}" height="{height}" preserveAspectRatio="xMidYMid slice"/>'
+    else:
+        image_markup = f'  <rect width="{width}" height="{height}" fill="#d7dde1"/>'
+
+    is_banner = height <= 240
+    is_portrait = height > width
+    margin_x = int(width * (0.052 if not is_portrait else 0.070))
+    margin_y = int(height * (0.080 if not is_banner else 0.120))
+    panel_width = int(width * (0.43 if width >= height else 0.80))
+    panel_height = int(height * (0.54 if width >= height else 0.34))
+    if is_banner:
+        panel_width = int(width * 0.46)
+        panel_height = int(height * 0.74)
+    if layout in {"right-panel", "right-offer", "split-countdown"} and not is_portrait:
+        panel_x = width - margin_x - panel_width
+    elif layout in {"center-panel", "center-lockup"} and not is_banner:
+        panel_x = int((width - panel_width) / 2)
+    else:
+        panel_x = margin_x
+    if layout in {"bottom-panel", "bottom-rail"} and not is_banner:
+        panel_y = height - margin_y - panel_height
+    elif layout in {"center-panel", "center-lockup"} and not is_banner:
+        panel_y = int((height - panel_height) / 2)
+    else:
+        panel_y = margin_y
+
+    panel_rx = max(18, int(min(width, height) * 0.030))
+    inner_x = panel_x + int(panel_width * 0.080)
+    headline_y = panel_y + int(panel_height * (0.38 if not is_banner else 0.48))
+    headline_size = max(22, int(width * (0.037 if width >= height else 0.062)))
+    body_size = max(14, int(width * (0.014 if width >= height else 0.026)))
+    small_size = max(11, int(width * (0.010 if width >= height else 0.020)))
+    if is_banner:
+        headline_size = max(20, int(height * 0.180))
+        body_size = max(12, int(height * 0.080))
+        small_size = max(10, int(height * 0.062))
+    cta_height = max(34, int(panel_height * 0.125))
+    cta_width = max(118, int(panel_width * 0.34))
+    cta_y = panel_y + panel_height - int(panel_height * 0.190)
+    accent_x = width - margin_x - int(width * 0.19) if panel_x < width / 2 else margin_x
+    accent_y = height - margin_y - int(height * 0.23)
+    accent_w = int(width * (0.18 if width >= height else 0.34))
+    accent_h = int(height * (0.18 if width >= height else 0.11))
+    if is_banner:
+        accent_w = int(width * 0.15)
+        accent_h = int(height * 0.50)
+        accent_y = int(height * 0.26)
+
+    def text_lines_markup(lines: list[str], x: int, y: int, size: int, color: str, weight: int = 800, gap: float = 1.18) -> str:
+        return "\n".join(
+            f'  <text x="{x}" y="{int(y + index * size * gap)}" fill="{color}" font-family="Inter, Arial, sans-serif" font-size="{size}" font-weight="{weight}">{escape(line)}</text>'
+            for index, line in enumerate(lines)
+            if line
+        )
+
+    visual_mark = f"""
+  <g opacity="0.90">
+    <rect x="{accent_x}" y="{accent_y}" width="{accent_w}" height="{accent_h}" rx="{max(14, int(min(width, height) * 0.025))}" fill="{secondary}" opacity="0.66"/>
+    <rect x="{int(accent_x + accent_w * 0.09)}" y="{int(accent_y + accent_h * 0.15)}" width="{int(accent_w * 0.82)}" height="{max(5, int(accent_h * 0.10))}" rx="5" fill="{accent}"/>
+    <circle cx="{int(accent_x + accent_w * 0.22)}" cy="{int(accent_y + accent_h * 0.62)}" r="{max(5, int(min(accent_w, accent_h) * 0.12))}" fill="#ffffff" opacity="0.72"/>
+    <circle cx="{int(accent_x + accent_w * 0.48)}" cy="{int(accent_y + accent_h * 0.62)}" r="{max(5, int(min(accent_w, accent_h) * 0.12))}" fill="#ffffff" opacity="0.40"/>
+    <circle cx="{int(accent_x + accent_w * 0.74)}" cy="{int(accent_y + accent_h * 0.62)}" r="{max(5, int(min(accent_w, accent_h) * 0.12))}" fill="#ffffff" opacity="0.28"/>
+  </g>"""
+
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+  <defs>
+    <linearGradient id="shade" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071523" stop-opacity="0.10"/>
+      <stop offset="0.62" stop-color="#071523" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="{secondary}" stop-opacity="0.50"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071523" stop-opacity="0.88"/>
+      <stop offset="1" stop-color="#13212d" stop-opacity="0.76"/>
+    </linearGradient>
+  </defs>
+{image_markup}
+  <rect width="{width}" height="{height}" fill="url(#shade)"/>
+{visual_mark}
+  <rect x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_height}" rx="{panel_rx}" fill="url(#panel)"/>
+  <rect x="{panel_x}" y="{panel_y}" width="{max(6, int(width * 0.006))}" height="{panel_height}" rx="{max(6, int(width * 0.006))}" fill="{accent}"/>
+  <text x="{inner_x}" y="{int(panel_y + panel_height * 0.18)}" fill="#ffffff" opacity="0.86" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="800">CME STREAMING</text>
+  <rect x="{inner_x}" y="{int(panel_y + panel_height * 0.225)}" width="{max(80, int(panel_width * 0.24))}" height="{max(28, int(panel_height * 0.105))}" rx="{max(12, int(panel_height * 0.045))}" fill="{accent}" opacity="0.96"/>
+  <text x="{int(inner_x + panel_width * 0.045)}" y="{int(panel_y + panel_height * 0.295)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="900">{badge} V{variant_number}</text>
+{text_lines_markup(headline_lines, inner_x, headline_y, headline_size, "#ffffff", 900)}
+{text_lines_markup(support_lines, inner_x, int(headline_y + headline_size * 2.55), body_size, "rgba(255,255,255,0.78)", 720)}
+{text_lines_markup(brief_lines, inner_x, int(headline_y + headline_size * 3.45), small_size, "rgba(255,255,255,0.58)", 700, 1.0)}
+  <rect x="{inner_x}" y="{cta_y}" width="{cta_width}" height="{cta_height}" rx="{max(14, int(panel_height * 0.052))}" fill="{accent}"/>
+  <text x="{int(inner_x + panel_width * 0.050)}" y="{int(cta_y + cta_height * 0.64)}" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="{small_size}" font-weight="900">{cta_text}</text>
+  <text x="{int(panel_x + panel_width - panel_width * 0.30)}" y="{int(panel_y + panel_height - panel_height * 0.090)}" fill="rgba(255,255,255,0.52)" font-family="Inter, Arial, sans-serif" font-size="{max(9, int(small_size * 0.82))}" font-weight="700">{treatment_name}</text>
 </svg>"""
 
 
@@ -3124,7 +5239,7 @@ def _demo_audience_traits() -> list[dict[str, Any]]:
             "lifecycle_stage": "winback" if "Churn" in audience["cohort_name"] else "growth",
             "preferred_tone": tones[index % len(tones)],
             "creative_implications_text": f"Creative should reflect {audience['cohort_name']} interests, lifecycle stage, and device behavior.",
-            "excluded_claims_json": json.dumps(["guaranteed savings", "exclusive content rights without validation"]),
+            "excluded_claims_json": json.dumps(["unsupported savings claims", "unverified content rights"]),
             "region_constraints_json": json.dumps({"allowed": ["US", "CA"], "blocked": []}),
             "channel_constraints_json": json.dumps({"allowed": ["web", "app", "email", "social", "onsite_personalization"]}),
             "created_ts": "2026-05-27",
@@ -3183,10 +5298,18 @@ def _demo_generation_requests() -> list[dict[str, Any]]:
                     "placement": placement,
                     "campaign_objective": brief["campaign_objective"],
                     "content_type": "image",
+                    "brand_guideline_id": _default_brand_guideline()["guideline_id"],
+                    "brand_guideline_version": _default_brand_guideline()["version"],
+                    "generation_model_id": "gpt-5-mini-balanced",
+                    "generation_model_label": "GPT-5 Mini - Balanced",
+                    "image_model_id": "gpt-5-mini-balanced",
+                    "compare_model_ids_json": json.dumps(["kimi-2-compare"]),
+                    "end_card_text": "",
+                    "cta_text": "",
                     "source_mode": "search_and_generate",
                     "selected_base_asset_ids_json": json.dumps([f"BASE-{((audience_index * len(placements) + placement_index) % 12) + 1:04d}"]),
                     "user_instructions": f"Create placement-ready variants for {audience['cohort_name']} in {PLACEMENT_SPECS[placement]['label']}.",
-                    "system_prompt": "Databricks model endpoint generates brand-safe creative variants from governed assets.",
+                    "system_prompt": "Databricks model endpoint generates polished, brand-safe creative variants from governed assets with one clear visual idea per output.",
                     "negative_prompt": "No real people, copyrighted characters, false claims, or restricted regional references.",
                     "requested_variant_count": 4,
                     "requested_by": "local.demo@databricks",
@@ -3195,6 +5318,34 @@ def _demo_generation_requests() -> list[dict[str, Any]]:
                     "completed_ts": "2026-05-27",
                 }
             )
+    rows.append(
+        {
+            "request_id": f"REQ-{len(rows) + 1:05d}",
+            "brief_id": "BRIEF-001",
+            "cohort_id": "COH-001",
+            "placement": "ctv_15s",
+            "campaign_objective": BRIEFS[0]["campaign_objective"],
+            "content_type": "video_endcard",
+            "brand_guideline_id": _default_brand_guideline()["guideline_id"],
+            "brand_guideline_version": _default_brand_guideline()["version"],
+            "generation_model_id": "runway-gen3-video-endcard",
+            "generation_model_label": "Runway Gen-3 - Video End Card",
+            "image_model_id": "gpt-5-mini-balanced",
+            "compare_model_ids_json": json.dumps([]),
+            "end_card_text": "Live games. One streaming home.",
+            "cta_text": "Start watching",
+            "source_mode": "search_and_generate_video_end_card",
+            "selected_base_asset_ids_json": json.dumps(["BASE-0001"]),
+            "user_instructions": "Create a 15-second CTV video end card for Boomers in the Midwest with a clear live-sports CTA.",
+            "system_prompt": "Video endpoint generates a polished short MP4 final frame from governed seed imagery with clean copy, restrained overlays, and CME Streaming guidelines.",
+            "negative_prompt": "No real people, copyrighted characters, false claims, or restricted regional references.",
+            "requested_variant_count": 4,
+            "requested_by": "local.demo@databricks",
+            "request_status": "completed",
+            "created_ts": "2026-06-01",
+            "completed_ts": "2026-06-01",
+        }
+    )
     return rows
 
 
@@ -3203,7 +5354,10 @@ def _demo_variants() -> list[dict[str, Any]]:
     rows = []
     for request_index, request in enumerate(requests):
         audience = next((item for item in AUDIENCES if item["cohort_id"] == request["cohort_id"]), AUDIENCES[0])
-        for variant in range(4):
+        brief = next((item for item in BRIEFS if item["brief_id"] == request["brief_id"]), BRIEFS[0])
+        is_video = _is_video_content(_as_text(request.get("content_type")))
+        variant_count = max(1, min(_as_int_value(request.get("requested_variant_count"), 4), 4 if is_video else 4))
+        for variant in range(variant_count):
             creative_asset_id = f"VAR-{request_index * 4 + variant + 1:06d}"
             spec = _placement_spec(request["placement"])
             source_asset_id = _loads_json(request["selected_base_asset_ids_json"], ["BASE-0001"])[0]
@@ -3215,6 +5369,40 @@ def _demo_variants() -> list[dict[str, Any]]:
                 source_height=int(source_asset.get("height_px", 720)) if source_asset else 720,
                 source_aspect_ratio=str(source_asset.get("aspect_ratio", "16:9")) if source_asset else "16:9",
             )
+            if is_video:
+                edit_steps.extend(
+                    [
+                        {
+                            "edit_sequence": len(edit_steps) + 1,
+                            "transformation_type": "video_end_card_overlay",
+                            "edit_label": EDIT_OPERATION_LABELS["video_end_card_overlay"],
+                            "edit_goal": "Generate a final MP4 end card with readable headline and brand-safe image treatment.",
+                        },
+                        {
+                            "edit_sequence": len(edit_steps) + 2,
+                            "transformation_type": "cta_overlay",
+                            "edit_label": EDIT_OPERATION_LABELS["cta_overlay"],
+                            "edit_goal": "Place the CTA inside the final-frame safe area.",
+                        },
+                    ]
+                )
+            video_headline, video_cta = _video_copy_for_variant(
+                _as_text(request.get("end_card_text"), "Live games. One streaming home."),
+                _as_text(request.get("cta_text"), "Start watching"),
+                variant + 1,
+            )
+            video_treatment = _video_treatment_for(
+                request.get("campaign_objective") or audience.get("cohort_name"),
+                request["placement"],
+                variant + 1,
+            )
+            visual_treatment = _creative_visual_treatment_for(
+                brief,
+                audience,
+                request.get("campaign_objective"),
+                request["placement"],
+                variant + 1,
+            )
             quality = 78 + request_index * 3 + variant * 4
             rows.append(
                 {
@@ -3225,27 +5413,48 @@ def _demo_variants() -> list[dict[str, Any]]:
                     "source_asset_id": source_asset_id,
                     "parent_creative_asset_id": source_asset_id,
                     "variant_number": variant + 1,
-                    "asset_name": f"{audience['cohort_name']} {request['placement'].replace('_', ' ').title()} Variant {variant + 1}",
-                    "asset_type": "Image",
+                    "asset_name": f"{audience['cohort_name']} {visual_treatment['name']} Variant {variant + 1}",
+                    "asset_type": "Video" if is_video else "Image",
+                    "content_type": "video_endcard" if is_video else request["content_type"],
                     "placement": request["placement"],
-                    "format": "SVG",
+                    "format": "MP4" if is_video else "SVG",
                     "width_px": spec["width_px"],
                     "height_px": spec["height_px"],
-                    "duration_sec": 0,
+                    "duration_sec": VIDEO_SEED_SAMPLE_DURATION_SECONDS if is_video else 0,
                     "aspect_ratio": spec["aspect_ratio"],
-                    "storage_uri": _creative_volume_uri("generated", f"{creative_asset_id}.svg"),
+                    "storage_uri": f"demo-mp4://{creative_asset_id}.mp4" if is_video else _creative_volume_uri("generated", f"{creative_asset_id}.svg"),
                     "thumbnail_uri": _creative_volume_uri("generated", f"{creative_asset_id}.svg"),
+                    "video_preview_uri": f"/api/creative-variants/{creative_asset_id}/video-preview" if is_video else "",
+                    "mp4_storage_uri": f"demo-mp4://{creative_asset_id}.mp4" if is_video else "",
+                    "video_source_asset_id": source_asset_id if is_video else "",
+                    "end_card_text": video_headline if is_video else request.get("end_card_text", ""),
+                    "cta_text": video_cta if is_video else request.get("cta_text", ""),
                     "generation_prompt": request["user_instructions"],
-                    "generation_model": CREATIVE_MODEL_ENDPOINT,
+                    "generation_model": request.get("generation_model_label") or "GPT-5 Mini - Balanced",
+                    "generation_model_id": request.get("generation_model_id", "gpt-5-mini-balanced"),
+                    "brand_guideline_id": request.get("brand_guideline_id", _default_brand_guideline()["guideline_id"]),
                     "generation_params_json": json.dumps(
                         {
                             "mode": CREATIVE_GENERATION_MODE,
-                            "model_endpoint": CREATIVE_MODEL_ENDPOINT,
+                            "model_endpoint": _model_option_by_id(request.get("generation_model_id", "")).get("endpoint_name"),
+                            "model_id": request.get("generation_model_id", "gpt-5-mini-balanced"),
+                            "model_label": request.get("generation_model_label") or "GPT-5 Mini - Balanced",
+                            "brand_guideline_id": request.get("brand_guideline_id", _default_brand_guideline()["guideline_id"]),
+                            "brand_guideline_version": request.get("brand_guideline_version", _default_brand_guideline()["version"]),
                             "variant": variant + 1,
                             "applied_edit_types": [step["transformation_type"] for step in edit_steps],
+                            "video_preview_uri": f"/api/creative-variants/{creative_asset_id}/video-preview" if is_video else "",
+                            "end_card_text": video_headline if is_video else request.get("end_card_text", ""),
+                            "cta_text": video_cta if is_video else request.get("cta_text", ""),
+                            "video_treatment": video_treatment if is_video else {},
+                            "visual_treatment": visual_treatment,
                         }
                     ),
-                    "adaptation_summary": _adaptation_summary(edit_steps, request["placement"]),
+                    "adaptation_summary": (
+                        f"Generated 15s MP4 end card with {video_treatment['name']} treatment from governed seed image and CME Streaming brand guideline."
+                        if is_video
+                        else f"Generated {visual_treatment['element_primary']} for {visual_treatment['audience_name']} from governed seed image. {_adaptation_summary(edit_steps, request['placement'])}"
+                    ),
                     "approval_status": "Approved" if variant >= 2 else "Pending_Review",
                     "approved_by": "local.reviewer@databricks" if variant >= 2 else "",
                     "approved_ts": "2026-05-27" if variant >= 2 else None,
@@ -3254,7 +5463,7 @@ def _demo_variants() -> list[dict[str, Any]]:
                     "quality_score": quality,
                     "predicted_ctr": round(0.76 + quality / 100.0, 2),
                     "target_segment": audience["cohort_name"],
-                    "content_tags": f"synthetic,{request['placement']},variant",
+                    "content_tags": f"synthetic,{request['placement']},variant,{visual_treatment['treatment_id']},{video_treatment['treatment_id'] if is_video else 'image'}",
                 }
             )
     return rows
@@ -3277,7 +5486,14 @@ def _demo_policy_checks() -> list[dict[str, Any]]:
                     "check_status": status,
                     "score": score,
                     "blocking_reason": "Review headline intensity" if status == "warn" else "",
-                    "evidence_json": json.dumps({"source": "databricks_model_endpoint", "placement": variant["placement"]}),
+                    "evidence_json": json.dumps(
+                        {
+                            "source": "databricks_model_endpoint",
+                            "placement": variant["placement"],
+                            "brand_guideline_id": variant.get("brand_guideline_id", _default_brand_guideline()["guideline_id"]),
+                            "brand_guideline_version": _default_brand_guideline()["version"],
+                        }
+                    ),
                     "policy_version": "2026.05-demo",
                     "model_or_rule": CREATIVE_POLICY_MODEL_ENDPOINT,
                     "review_required": status != "pass",
@@ -3299,6 +5515,33 @@ def _demo_transformations() -> list[dict[str, Any]]:
             source_height=int(source.get("height_px", 720)),
             source_aspect_ratio=str(source.get("aspect_ratio", "16:9")),
         )
+        if _is_video_content(_as_text(variant.get("content_type"))):
+            spec = _placement_spec(_as_text(variant.get("placement")))
+            for edit_type, goal in [
+                ("video_end_card_overlay", "Generate a final MP4 end card with readable headline and brand-safe image treatment."),
+                ("cta_overlay", "Place the CTA inside the final-frame safe area."),
+            ]:
+                steps.append(
+                    {
+                        "edit_sequence": len(steps) + 1,
+                        "transformation_type": edit_type,
+                        "edit_label": EDIT_OPERATION_LABELS[edit_type],
+                        "edit_goal": goal,
+                        "parameters": {
+                            "placement": variant["placement"],
+                            "source_width_px": int(source.get("width_px", 1280)),
+                            "source_height_px": int(source.get("height_px", 720)),
+                            "source_aspect_ratio": str(source.get("aspect_ratio", "16:9")),
+                            "output_width_px": spec["width_px"],
+                            "output_height_px": spec["height_px"],
+                            "output_aspect_ratio": spec["aspect_ratio"],
+                            "safe_area": spec["safe_area"],
+                            "channels": spec["channels"],
+                            "end_card_text": variant.get("end_card_text", ""),
+                            "cta_text": variant.get("cta_text", ""),
+                        },
+                    }
+                )
         for step in steps:
             parameters = step["parameters"]
             rows.append(
@@ -3318,7 +5561,7 @@ def _demo_transformations() -> list[dict[str, Any]]:
                     "output_width_px": parameters["output_width_px"],
                     "output_height_px": parameters["output_height_px"],
                     "output_aspect_ratio": parameters["output_aspect_ratio"],
-                    "tool_or_model": CREATIVE_MODEL_ENDPOINT,
+                    "tool_or_model": variant.get("generation_model") or CREATIVE_MODEL_ENDPOINT,
                     "parameters_json": json.dumps(parameters),
                     "edit_status": "completed",
                     "performed_by": "local.demo@databricks",
@@ -3359,6 +5602,92 @@ def _demo_evaluations() -> list[dict[str, Any]]:
         for rank, row in enumerate(sorted(values, key=lambda item: item["overall_score"], reverse=True), start=1):
             row["rank_within_segment_placement"] = rank
     return rows
+
+
+def _bounded_score(value: float, floor: int = 0, ceiling: int = 99) -> int:
+    return int(max(floor, min(ceiling, round(value))))
+
+
+def _approval_gate_evaluation_for_variant(
+    variant: dict[str, Any],
+    existing_evaluations: list[dict[str, Any]],
+    approved_ts: str,
+) -> dict[str, Any]:
+    creative_asset_id = _as_text(variant.get("creative_asset_id"), "creative")
+    variant_number = max(1, _as_int_value(variant.get("variant_number"), 1))
+    quality_score = _as_float_value(variant.get("quality_score"), 82 + variant_number * 3)
+    predicted_ctr = _as_float_value(variant.get("predicted_ctr"), 1.15 + variant_number * 0.2)
+    freshness = _stable_fraction(creative_asset_id, variant.get("cohort_id"), variant.get("placement"))
+    visual_signal = _stable_fraction(variant.get("asset_name"), variant.get("generation_model"), variant.get("reference_asset_id"))
+    params = _loads_json(variant.get("generation_params_json"), {})
+    if not isinstance(params, dict):
+        params = {}
+
+    base_score = quality_score * 0.62 + min(predicted_ctr, 4.8) * 5.4 + 12 + variant_number * 0.6 + freshness * 4
+    click_score = _bounded_score(base_score + visual_signal * 5 - 3, 62, 97)
+    dwell_score = _bounded_score(base_score + 4 + freshness * 3, 64, 98)
+    subscription_score = _bounded_score(base_score - 2 + variant_number, 60, 96)
+    relevance_score = _bounded_score(quality_score + 4 + freshness * 3, 66, 99)
+    clarity_score = _bounded_score(quality_score + 2 + visual_signal * 4, 66, 99)
+    fatigue_score = _bounded_score(34 - variant_number * 3 - freshness * 5, 8, 42)
+    brand_fit_score = _bounded_score(quality_score + 5 + visual_signal * 2, 68, 99)
+    overall_score = _bounded_score(
+        relevance_score * 0.28
+        + clarity_score * 0.18
+        + brand_fit_score * 0.20
+        + click_score * 0.16
+        + subscription_score * 0.14
+        + (100 - fatigue_score) * 0.04,
+        68,
+        98,
+    )
+    evaluation = {
+        "evaluation_id": f"EVAL-APP-{_safe_volume_filename(creative_asset_id, 'creative')}",
+        "creative_asset_id": creative_asset_id,
+        "cohort_id": variant.get("cohort_id"),
+        "placement": variant.get("placement"),
+        "panel_size": 125,
+        "click_propensity_score": click_score,
+        "expected_dwell_time_score": dwell_score,
+        "subscription_start_propensity_score": subscription_score,
+        "relevance_score": relevance_score,
+        "clarity_score": clarity_score,
+        "fatigue_risk_score": fatigue_score,
+        "brand_fit_score": brand_fit_score,
+        "overall_score": overall_score,
+        "rank_within_segment_placement": 1,
+        "judge_model": CREATIVE_JUDGE_MODEL_ENDPOINT,
+        "judge_prompt_version": "2026.06-approval-gate",
+        "evidence_json": json.dumps(
+            {
+                "top_signal": "approved creative persisted into evaluation gate",
+                "source": "creative_studio_approval",
+                "mode": CREATIVE_GENERATION_MODE,
+                "quality_score": round(quality_score, 2),
+                "predicted_ctr": round(predicted_ctr, 2),
+                "generation_model": variant.get("generation_model") or CREATIVE_MODEL_ENDPOINT,
+                "brand_guideline_id": variant.get("brand_guideline_id"),
+                "content_type": variant.get("content_type") or variant.get("asset_type"),
+                "visual_treatment_id": params.get("visual_treatment_id") or params.get("treatment_id"),
+            }
+        ),
+        "created_ts": approved_ts,
+    }
+    segment_rows = [
+        item
+        for item in existing_evaluations
+        if item.get("creative_asset_id") != creative_asset_id
+        and item.get("cohort_id") == evaluation["cohort_id"]
+        and item.get("placement") == evaluation["placement"]
+    ] + [evaluation]
+    for rank, item in enumerate(
+        sorted(segment_rows, key=lambda row: _as_float_value(row.get("overall_score"), 0.0), reverse=True),
+        start=1,
+    ):
+        if item is evaluation:
+            evaluation["rank_within_segment_placement"] = rank
+            break
+    return evaluation
 
 
 def _demo_lineage_edges() -> list[dict[str, Any]]:
@@ -3446,6 +5775,56 @@ def _query_workflow_table(logical_name: str, table: str, fallback: list[dict[str
         return fallback
 
 
+def _query_enhancement_table(logical_name: str, table: str, fallback: list[dict[str, Any]], row_limit: int = 100) -> list[dict[str, Any]]:
+    if not USE_PIPELINE_DATA:
+        DATA_LOAD_SOURCES[logical_name] = {
+            "source": "model_endpoint_demo_fallback",
+            "path": "in_memory",
+            "rows": len(fallback),
+            "loaded": True,
+        }
+        return fallback
+
+    full_name = _pipeline_table(table)
+    try:
+        rows = _execute_sql(f"SELECT * FROM {full_name} LIMIT {row_limit}", row_limit=row_limit)
+        _table_source(logical_name, full_name, len(rows))
+        return rows or fallback
+    except Exception as exc:
+        _table_error(logical_name, exc)
+        return fallback
+
+
+@lru_cache(maxsize=1)
+def _brand_guidelines_data() -> list[dict[str, Any]]:
+    return _query_enhancement_table("brand_guidelines", "gold_buyside_brand_guideline_profile", BRAND_GUIDELINES)
+
+
+@lru_cache(maxsize=1)
+def _generation_model_options_data() -> list[dict[str, Any]]:
+    rows = _query_enhancement_table("generation_models", "gold_buyside_generation_model_option", GENERATION_MODEL_OPTIONS)
+    return [{**row, "default": _as_bool_value(row.get("default"))} for row in rows]
+
+
+@lru_cache(maxsize=1)
+def _audience_demographic_signals_data() -> list[dict[str, Any]]:
+    return _query_enhancement_table(
+        "audience_demographics",
+        "gold_buyside_audience_demographic_signal",
+        AUDIENCE_DEMOGRAPHIC_SIGNALS,
+    )
+
+
+@lru_cache(maxsize=1)
+def _purchase_intent_signals_data() -> list[dict[str, Any]]:
+    return _query_enhancement_table("purchase_signals", "gold_buyside_purchase_intent_signal", PURCHASE_INTENT_SIGNALS)
+
+
+@lru_cache(maxsize=1)
+def _evaluation_rubrics_data() -> list[dict[str, Any]]:
+    return _query_enhancement_table("evaluation_rubrics", "gold_buyside_synthetic_eval_rubric", EVALUATION_RUBRICS)
+
+
 @lru_cache(maxsize=1)
 def _creative_workflow_data() -> dict[str, list[dict[str, Any]]]:
     return {
@@ -3472,6 +5851,37 @@ def _creative_workflow_data() -> dict[str, list[dict[str, Any]]]:
         "lineage_edges": _query_workflow_table("creative_lineage_edges", "gold_buyside_creative_lineage_edge", _demo_lineage_edges()),
         "activation_exports": _query_workflow_table("activation_exports", "gold_buyside_activation_export", _demo_activation_exports()),
     }
+
+
+def _register_static_demo_tables() -> None:
+    matrix_rows = _evaluation_channel_matrix_rows(_workflow_rows())
+    for name, rows in [
+        ("brand_guidelines", _brand_guidelines_data()),
+        ("generation_models", _generation_model_options_data()),
+        ("audience_demographics", _audience_demographic_signals_data()),
+        ("purchase_signals", _purchase_intent_signals_data()),
+        ("evaluation_rubrics", _evaluation_rubrics_data()),
+        ("evaluation_channel_matrix", matrix_rows),
+    ]:
+        if _as_text(DATA_LOAD_SOURCES.get(name, {}).get("source")).startswith("databricks_sql"):
+            continue
+        if name == "evaluation_channel_matrix" and USE_PIPELINE_DATA:
+            DATA_LOAD_SOURCES[name] = {
+                "source": "databricks_sql_derived",
+                "path": (
+                    f"{PIPELINE_CATALOG}.{PIPELINE_SCHEMA}.gold_buyside_synthetic_audience_eval + "
+                    f"{PIPELINE_CATALOG}.{PIPELINE_SCHEMA}.gold_buyside_creative_variant"
+                ),
+                "rows": len(rows),
+                "loaded": True,
+            }
+            continue
+        DATA_LOAD_SOURCES[name] = {
+            "source": "model_endpoint_demo_fallback",
+            "path": "in_memory",
+            "rows": len(rows),
+            "loaded": True,
+        }
 
 
 def _synthetic_svg(title: str, subtitle: str, ratio: str = "16:9") -> str:
@@ -3508,6 +5918,7 @@ async def health() -> dict[str, str]:
 async def backend_tables() -> dict[str, Any]:
     _runtime_data()
     _creative_workflow_data()
+    _register_static_demo_tables()
     state_rows = len(_lakebase_events(limit=1)) if _lakebase_configured() else 0
     return {
         "data_source": "databricks_sql" if USE_PIPELINE_DATA else "csv_extract",
@@ -3555,6 +5966,8 @@ async def model_status() -> dict[str, Any]:
         "creative_generation_mode": CREATIVE_GENERATION_MODE,
         "creative_model_endpoint": CREATIVE_MODEL_ENDPOINT,
         "creative_image_model": CREATIVE_IMAGE_MODEL,
+        "generation_model_options": GENERATION_MODEL_OPTIONS,
+        "brand_guideline_profile": _default_brand_guideline(),
         "policy_model_endpoint": CREATIVE_POLICY_MODEL_ENDPOINT,
         "judge_model_endpoint": CREATIVE_JUDGE_MODEL_ENDPOINT,
         "app_state_backend": "lakebase" if _lakebase_init() else "memory_fallback",
@@ -3598,6 +6011,50 @@ async def brief_detail(brief_id: str) -> dict[str, Any]:
 @app.get("/api/audiences")
 async def audiences() -> list[dict[str, Any]]:
     return _runtime_data()["audiences"]
+
+
+@app.get("/api/brand-guidelines")
+async def brand_guidelines() -> list[dict[str, Any]]:
+    return _brand_guidelines_data()
+
+
+@app.get("/api/generation-models")
+async def generation_models(content_type: str = "") -> list[dict[str, Any]]:
+    return _model_options_for_content(content_type) if content_type else _generation_model_options_data()
+
+
+@app.get("/api/audience-demographics")
+async def audience_demographics() -> list[dict[str, Any]]:
+    return _audience_demographic_signals_data()
+
+
+@app.get("/api/purchase-signals")
+async def purchase_signals() -> list[dict[str, Any]]:
+    return _purchase_intent_signals_data()
+
+
+@app.get("/api/evaluation-rubrics")
+async def evaluation_rubrics() -> list[dict[str, Any]]:
+    return _evaluation_rubrics_data()
+
+
+@app.get("/api/evaluation-channel-matrix")
+async def evaluation_channel_matrix() -> list[dict[str, Any]]:
+    rows = _evaluation_channel_matrix_rows()
+    source = "databricks_sql_derived" if USE_PIPELINE_DATA else "model_endpoint_demo_fallback"
+    path = (
+        f"{PIPELINE_CATALOG}.{PIPELINE_SCHEMA}.gold_buyside_synthetic_audience_eval + "
+        f"{PIPELINE_CATALOG}.{PIPELINE_SCHEMA}.gold_buyside_creative_variant"
+        if USE_PIPELINE_DATA
+        else "in_memory"
+    )
+    DATA_LOAD_SOURCES["evaluation_channel_matrix"] = {
+        "source": source,
+        "path": path,
+        "rows": len(rows),
+        "loaded": True,
+    }
+    return rows
 
 
 @app.get("/api/creatives")
@@ -3767,6 +6224,15 @@ def _activation_lineage_payload(activation_id: str) -> dict[str, Any]:
         or (request_asset_ids[0] if request_asset_ids else "")
     )
     reference_asset = _find_asset_by_any_id(rows["base_assets"], reference_asset_id)
+    brand_guideline = _brand_guideline_by_id(
+        _as_text((variant or {}).get("brand_guideline_id") or (generation_request or {}).get("brand_guideline_id"))
+    )
+    brand_policy_rules = _loads_json((brand_guideline or {}).get("blocked_claims_json"), [])
+    brand_policy_rule_count = len(brand_policy_rules) if isinstance(brand_policy_rules, list) else 0
+    is_video_variant = _is_video_content(_as_text((variant or {}).get("content_type"))) or _as_text((variant or {}).get("format")).upper() == "MP4"
+    source_preview_uri = f"/api/creative-assets/{reference_asset_id}/thumbnail" if reference_asset_id else ""
+    final_preview_uri = f"/api/creative-assets/{creative_id}/thumbnail" if creative_id else ""
+    video_preview_uri = f"/api/creative-variants/{creative_id}/video-preview" if creative_id and is_video_variant else ""
 
     transformations = [
         item
@@ -3774,6 +6240,21 @@ def _activation_lineage_payload(activation_id: str) -> dict[str, Any]:
         if _as_text(item.get("creative_asset_id")) == creative_id
         or _as_text(item.get("output_asset_id")) == creative_id
         or _as_text(item.get("input_asset_id")) == creative_id
+    ]
+    lineage_generation_model = _as_text(
+        (variant or {}).get("generation_model")
+        or (generation_request or {}).get("generation_model_label")
+        or (creative or {}).get("generation_model")
+        or CREATIVE_MODEL_ENDPOINT,
+        "N/A",
+    )
+    transformations = [
+        {
+            **item,
+            "tool_or_model": item.get("tool_or_model") or lineage_generation_model,
+            "generation_model": item.get("generation_model") or lineage_generation_model,
+        }
+        for item in transformations
     ]
     policy_checks = [item for item in rows["policy_checks"] if _as_text(item.get("creative_asset_id")) == creative_id]
     evaluations = [item for item in rows["evaluations"] if _as_text(item.get("creative_asset_id")) == creative_id]
@@ -3849,7 +6330,9 @@ def _activation_lineage_payload(activation_id: str) -> dict[str, Any]:
                 _lineage_metadata(
                     [
                         ("Placement", variant.get("placement")),
+                        ("Content type", variant.get("content_type") or variant.get("asset_type")),
                         ("Generation model", variant.get("generation_model")),
+                        ("Brand guideline", brand_guideline.get("profile_name")),
                         ("Reference asset", reference_asset_id),
                         ("Predicted CTR", variant.get("predicted_ctr")),
                     ]
@@ -3888,6 +6371,8 @@ def _activation_lineage_payload(activation_id: str) -> dict[str, Any]:
                     [
                         ("Source mode", generation_request.get("source_mode")),
                         ("Retrieval source", generation_request.get("retrieval_source")),
+                        ("Generation model", generation_request.get("generation_model_label")),
+                        ("Brand guideline", brand_guideline.get("version")),
                         ("Requested variants", generation_request.get("requested_variant_count")),
                         ("Created", generation_request.get("created_ts")),
                     ]
@@ -3950,6 +6435,24 @@ def _activation_lineage_payload(activation_id: str) -> dict[str, Any]:
                 ),
             )
         )
+    if brand_guideline:
+        steps.append(
+            _lineage_step(
+                "brand_guideline",
+                "brand_guideline",
+                _as_text(brand_guideline.get("guideline_id")),
+                _as_text(brand_guideline.get("profile_name"), "Brand guideline"),
+                _as_text(brand_guideline.get("tone"), "Generated brand profile"),
+                _as_text(brand_guideline.get("status")),
+                _lineage_metadata(
+                    [
+                        ("Brand", brand_guideline.get("brand_name")),
+                        ("Version", brand_guideline.get("version")),
+                        ("Policy exclusions", f"{brand_policy_rule_count} configured rules" if brand_policy_rule_count else ""),
+                    ]
+                ),
+            )
+        )
 
     return {
         "activation_id": activation_id,
@@ -3961,8 +6464,14 @@ def _activation_lineage_payload(activation_id: str) -> dict[str, Any]:
         "brief": brief,
         "audience": audience,
         "reference_asset": reference_asset,
+        "brand_guideline": brand_guideline,
+        "source_preview_uri": source_preview_uri,
+        "final_preview_uri": final_preview_uri,
+        "video_preview_uri": video_preview_uri,
         "steps": steps,
         "evidence": [
+            {"label": "Model", "value": _as_text((variant or {}).get("generation_model") or (generation_request or {}).get("generation_model_label"), "N/A")},
+            {"label": "Guideline", "value": _as_text(brand_guideline.get("version"), "N/A")},
             {"label": "Transformations", "value": str(len(transformations))},
             {"label": "Policy checks", "value": str(len(policy_checks))},
             {"label": "Synthetic evaluations", "value": str(len(evaluations))},
@@ -3997,7 +6506,7 @@ async def creative_asset_search(
     placement: str = "",
     category: str = "",
     asset_type: str = "",
-    limit: int = Query(default=12, ge=1, le=50),
+    limit: int = Query(default=100, ge=1, le=100),
 ) -> list[dict[str, Any]]:
     assets = _governed_retrieval_assets()
     query = q.strip().lower()
@@ -4032,6 +6541,59 @@ async def creative_asset_search(
     return filtered[:limit]
 
 
+@app.get("/api/creative-assets/{asset_id}/video-preview")
+async def creative_asset_video_preview(asset_id: str) -> Response:
+    asset = next(
+        (
+            item
+            for item in _governed_retrieval_assets()
+            if item.get("asset_id") == asset_id or asset_id in _asset_related_ids(item)
+        ),
+        None,
+    )
+    if not asset or _as_text(asset.get("asset_type")).lower() != "video":
+        raise HTTPException(status_code=404, detail="Approved video seed asset not found")
+    mp4_uri = _as_text(asset.get("storage_uri"))
+    seed_path = _demo_video_seed_path_from_uri(mp4_uri)
+    if seed_path is not None:
+        return FileResponse(
+            seed_path,
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": f'inline; filename="{seed_path.name}"',
+                "X-Demo-Video-Preview": "approved-video-seed-file",
+            },
+        )
+    if mp4_uri.startswith("/"):
+        mp4_path = Path(mp4_uri)
+        if mp4_path.exists():
+            return FileResponse(mp4_path, media_type="video/mp4")
+        volume_content = _download_volume_file(mp4_path)
+        if volume_content is not None:
+            return Response(
+                content=volume_content,
+                media_type="video/mp4",
+                headers={"Content-Disposition": f'inline; filename="{asset_id}.mp4"'},
+            )
+    if DEMO_VIDEO_ASSET.exists():
+        return FileResponse(
+            DEMO_VIDEO_ASSET,
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": f'inline; filename="{asset_id}.mp4"',
+                "X-Demo-Video-Preview": "approved-video-seed-sample",
+            },
+        )
+    return Response(
+        content=_demo_mp4_bytes(),
+        media_type="video/mp4",
+        headers={
+            "Content-Disposition": f'inline; filename="{asset_id}.mp4"',
+            "X-Demo-Video-Preview": "approved-video-seed-embedded",
+        },
+    )
+
+
 @app.get("/api/creative-assets/{asset_id}/thumbnail")
 async def creative_asset_thumbnail(asset_id: str) -> Any:
     workflow = _creative_workflow_data()
@@ -4047,8 +6609,26 @@ async def creative_asset_thumbnail(asset_id: str) -> Any:
         None,
     )
     if record:
+        if record.get("creative_asset_id") == asset_id:
+            return Response(content=_polished_variant_svg(record), media_type="image/svg+xml")
+        seed_image = _asset_image_content(asset_id)
+        if seed_image is not None:
+            content, media_type = seed_image
+            if media_type != "image/svg+xml":
+                return Response(content=content, media_type=media_type)
         if record.get("creative_asset_id") == asset_id and record.get("reference_asset_id"):
-            return Response(content=_reference_variant_svg(record), media_type="image/svg+xml")
+            reference_asset_id = _as_text(record.get("reference_asset_id") or record.get("source_asset_id") or record.get("parent_creative_asset_id"))
+            reference_image = _asset_image_content(reference_asset_id)
+            if reference_image is not None:
+                content, media_type = reference_image
+                return Response(content=content, media_type=media_type)
+            return Response(content=_polished_variant_svg(record), media_type="image/svg+xml")
+        if record.get("creative_asset_id") == asset_id:
+            reference_asset_id = _as_text(record.get("reference_asset_id") or record.get("source_asset_id") or record.get("parent_creative_asset_id"))
+            reference_image = _asset_image_content(reference_asset_id)
+            if reference_image is not None:
+                content, media_type = reference_image
+                return Response(content=content, media_type=media_type)
         uri = _as_text(record.get("thumbnail_uri") or record.get("storage_uri"))
         image_path = Path(uri)
         if uri and image_path.exists():
@@ -4102,47 +6682,63 @@ async def creative_generation_request_variants(request_id: str) -> list[dict[str
 async def create_creative_generation_request(payload: CreativeGenerationRequestIn) -> dict[str, Any]:
     if not payload.brief_id or not payload.cohort_id:
         raise HTTPException(status_code=400, detail="brief_id and cohort_id are required")
-    count = max(1, min(payload.requested_variant_count, 5))
+    is_video = _is_video_content(payload.content_type)
+    count = max(1, min(payload.requested_variant_count, 4 if is_video else 5))
     request_id = f"REQ-LIVE-{int(time.time())}"
+    generation_models = _resolve_generation_models(payload, is_video)
+    primary_model = generation_models[0]
+    model_labels = [_as_text(model.get("label"), model.get("model_id")) for model in generation_models]
+    model_ids = [_as_text(model.get("model_id")) for model in generation_models]
+    model_endpoint = _as_text(primary_model.get("endpoint_name"), CREATIVE_MODEL_ENDPOINT)
+    brand_guideline = _brand_guideline_by_id(payload.brand_guideline_id)
     audience = next((item for item in _runtime_data()["audiences"] if item["cohort_id"] == payload.cohort_id), None)
+    brief = next((item for item in _runtime_data()["briefs"] if item.get("brief_id") == payload.brief_id), None)
     cohort_name = audience["cohort_name"] if audience else payload.cohort_id
     reference_assets, retrieval = _retrieve_generation_reference_assets(payload, cohort_name, limit=max(count, 4))
     if not reference_assets:
         reference_assets = _governed_retrieval_assets()[:1]
     base_asset_ids = [_as_text(asset.get("asset_id"), "BASE-0001") for asset in reference_assets] or ["BASE-0001"]
     created_ts = time.strftime("%Y-%m-%d %H:%M:%S")
-    model_invocation = _invoke_model_endpoint(
-        CREATIVE_MODEL_ENDPOINT,
-        "creative_generation",
-        "You generate brand-safe creative variants from retrieved governed seed image references for a streaming media campaign.",
-        json.dumps(
-            {
-                "brief_id": payload.brief_id,
-                "cohort_id": payload.cohort_id,
-                "placement": payload.placement,
-                "selected_category": payload.category,
-                "content_type": payload.content_type,
-                "retrieval_source": retrieval["source"],
-                "retrieval_query": retrieval["query"],
-                "reference_assets": [
-                    {
-                        "asset_id": asset.get("asset_id"),
-                        "asset_name": asset.get("asset_name"),
-                        "demo_category": asset.get("demo_category"),
-                        "category_slug": asset.get("category_slug"),
-                        "placement": asset.get("placement"),
-                        "thumbnail_uri": asset.get("thumbnail_uri"),
-                        "description": asset.get("description"),
-                        "vector_asset_id": asset.get("vector_asset_id"),
-                        "vector_score": asset.get("vector_score"),
-                    }
-                    for asset in reference_assets
-                ],
-                "instructions": payload.user_instructions or "Generate segment-ready creative variants.",
-                "requested_variant_count": count,
-            }
-        ),
-    )
+    model_invocations = {}
+    for model in generation_models:
+        endpoint = _as_text(model.get("endpoint_name"), CREATIVE_MODEL_ENDPOINT)
+        model_invocations[_as_text(model.get("model_id"))] = _invoke_model_endpoint(
+            endpoint,
+            "creative_generation",
+            "You generate polished, brand-safe image and video variants from retrieved governed seed references for a streaming media campaign. Keep each output visually appealing: one focal message, one tasteful accent treatment, generous spacing, readable copy, and no cluttered UI labels or dashboard-like overlays.",
+            json.dumps(
+                {
+                    "brief_id": payload.brief_id,
+                    "cohort_id": payload.cohort_id,
+                    "placement": payload.placement,
+                    "selected_category": payload.category,
+                    "content_type": payload.content_type,
+                    "brand_guideline": brand_guideline,
+                    "generation_model": model,
+                    "generation_model_ids": model_ids,
+                    "end_card_text": payload.end_card_text,
+                    "cta_text": payload.cta_text,
+                    "retrieval_source": retrieval["source"],
+                    "retrieval_query": retrieval["query"],
+                    "reference_assets": [
+                        {
+                            "asset_id": asset.get("asset_id"),
+                            "asset_name": asset.get("asset_name"),
+                            "demo_category": asset.get("demo_category"),
+                            "category_slug": asset.get("category_slug"),
+                            "placement": asset.get("placement"),
+                            "thumbnail_uri": asset.get("thumbnail_uri"),
+                            "description": asset.get("description"),
+                            "vector_asset_id": asset.get("vector_asset_id"),
+                            "vector_score": asset.get("vector_score"),
+                        }
+                        for asset in reference_assets
+                    ],
+                    "instructions": payload.user_instructions or "Generate polished segment-ready creative variants with clean composition and one distinct visual treatment per variant.",
+                    "requested_variant_count": count,
+                }
+            ),
+        )
     request = {
         "request_id": request_id,
         "brief_id": payload.brief_id,
@@ -4150,10 +6746,18 @@ async def create_creative_generation_request(payload: CreativeGenerationRequestI
         "placement": payload.placement,
         "campaign_objective": "Databricks model endpoint request",
         "content_type": payload.content_type,
-        "source_mode": "vector_search_rag_seed_image_generate",
+        "brand_guideline_id": brand_guideline["guideline_id"],
+        "brand_guideline_version": brand_guideline["version"],
+        "generation_model_id": ",".join(model_ids),
+        "generation_model_label": " + ".join(model_labels),
+        "image_model_id": payload.image_model_id or next((model["model_id"] for model in generation_models if model.get("modality") == "image"), primary_model["model_id"]),
+        "compare_model_ids_json": json.dumps(model_ids[1:]),
+        "end_card_text": payload.end_card_text,
+        "cta_text": payload.cta_text,
+        "source_mode": "vector_search_rag_video_seed_generate" if is_video else "vector_search_rag_seed_image_generate",
         "selected_base_asset_ids_json": json.dumps(base_asset_ids),
-        "user_instructions": payload.user_instructions or "Generate segment-ready creative variants.",
-        "system_prompt": f"Databricks model endpoint {CREATIVE_MODEL_ENDPOINT} generates safe image variants from retrieved governed seed images.",
+        "user_instructions": payload.user_instructions or "Generate polished segment-ready creative variants with clean composition and one distinct visual treatment per variant.",
+        "system_prompt": f"Multi-model fan-out ({' + '.join(model_labels)}) generates safe, polished {'video' if is_video else 'image'} variants from retrieved governed seed assets under {brand_guideline['profile_name']}; each variant uses a distinct but restrained visual treatment.",
         "negative_prompt": "No real people, copyrighted characters, false claims, or unapproved regions.",
         "requested_variant_count": count,
         "requested_by": "app_user",
@@ -4168,8 +6772,27 @@ async def create_creative_generation_request(payload: CreativeGenerationRequestI
     transformations = []
     for index in range(count):
         creative_asset_id = f"VAR-LIVE-{int(time.time())}-{index + 1}"
+        variant_model = generation_models[index % len(generation_models)]
+        variant_model_id = _as_text(variant_model.get("model_id"), primary_model["model_id"])
+        variant_model_label = _as_text(variant_model.get("label"), variant_model_id)
+        variant_model_endpoint = _as_text(variant_model.get("endpoint_name"), CREATIVE_MODEL_ENDPOINT)
+        variant_model_invocation = model_invocations.get(variant_model_id, {})
         reference_asset = reference_assets[index % len(reference_assets)]
         reference_asset_id = _as_text(reference_asset.get("asset_id"), base_asset_ids[0])
+        video_category = _as_text(reference_asset.get("demo_category") or payload.category or cohort_name)
+        video_headline, video_cta = _video_copy_for_variant(
+            payload.end_card_text or "Live games. One streaming home.",
+            payload.cta_text or "Start watching",
+            index + 1,
+        )
+        video_treatment = _video_treatment_for(video_category, payload.placement, index + 1)
+        visual_treatment = _creative_visual_treatment_for(
+            brief,
+            audience,
+            video_category,
+            payload.placement,
+            index + 1,
+        )
         edit_steps = _edit_steps_for_placement(
             payload.placement,
             index + 1,
@@ -4177,6 +6800,34 @@ async def create_creative_generation_request(payload: CreativeGenerationRequestI
             source_height=_as_int_value(reference_asset.get("height_px"), spec["height_px"]),
             source_aspect_ratio=_as_text(reference_asset.get("aspect_ratio"), spec["aspect_ratio"]),
         )
+        if is_video:
+            for edit_type, goal in [
+                ("video_end_card_overlay", "Generate a final MP4 end card with readable headline and brand-safe image treatment."),
+                ("cta_overlay", "Place the CTA inside the final-frame safe area."),
+            ]:
+                edit_steps.append(
+                    {
+                        "edit_sequence": len(edit_steps) + 1,
+                        "transformation_type": edit_type,
+                        "edit_label": EDIT_OPERATION_LABELS[edit_type],
+                        "edit_goal": goal,
+                        "parameters": {
+                            "placement": payload.placement,
+                            "source_width_px": _as_int_value(reference_asset.get("width_px"), spec["width_px"]),
+                            "source_height_px": _as_int_value(reference_asset.get("height_px"), spec["height_px"]),
+                            "source_aspect_ratio": _as_text(reference_asset.get("aspect_ratio"), spec["aspect_ratio"]),
+                            "output_width_px": spec["width_px"],
+                            "output_height_px": spec["height_px"],
+                            "output_aspect_ratio": spec["aspect_ratio"],
+                            "safe_area": spec["safe_area"],
+                            "channels": spec["channels"],
+                            "end_card_text": video_headline,
+                            "cta_text": video_cta,
+                            "video_treatment": video_treatment,
+                            "visual_treatment": visual_treatment,
+                        },
+                    }
+                )
         for step in edit_steps:
             parameters = step["parameters"]
             transformations.append(
@@ -4196,7 +6847,7 @@ async def create_creative_generation_request(payload: CreativeGenerationRequestI
                     "output_width_px": parameters["output_width_px"],
                     "output_height_px": parameters["output_height_px"],
                     "output_aspect_ratio": parameters["output_aspect_ratio"],
-                    "tool_or_model": CREATIVE_MODEL_ENDPOINT,
+                    "tool_or_model": variant_model_endpoint,
                     "parameters_json": json.dumps(parameters),
                     "edit_status": "completed",
                     "performed_by": "app_user",
@@ -4216,24 +6867,46 @@ async def create_creative_generation_request(payload: CreativeGenerationRequestI
                 "reference_thumbnail_uri": _as_text(reference_asset.get("thumbnail_uri") or reference_asset.get("storage_uri")),
                 "reference_demo_category": _as_text(reference_asset.get("demo_category") or payload.category),
                 "variant_number": index + 1,
-                "asset_name": f"{_as_text(reference_asset.get('demo_category'), cohort_name)} Variant {index + 1}",
-                "asset_type": "Image",
+                "asset_name": (
+                    f"{video_category} {visual_treatment['name']} Variant {index + 1}"
+                    if is_video
+                    else f"{_as_text(reference_asset.get('demo_category'), cohort_name)} {visual_treatment['name']} Variant {index + 1}"
+                ),
+                "asset_type": "Video" if is_video else "Image",
+                "content_type": "video_endcard" if is_video else payload.content_type,
                 "placement": payload.placement,
-                "format": "SVG",
+                "format": "MP4" if is_video else "SVG",
                 "width_px": spec["width_px"],
                 "height_px": spec["height_px"],
-                "duration_sec": 0,
+                "duration_sec": VIDEO_SEED_SAMPLE_DURATION_SECONDS if is_video else 0,
                 "aspect_ratio": spec["aspect_ratio"],
-                "storage_uri": f"rag-vector-search://{CREATIVE_VECTOR_SEARCH_INDEX}/{creative_asset_id}",
+                "storage_uri": (
+                    f"demo-mp4://{creative_asset_id}.mp4"
+                    if is_video
+                    else f"rag-vector-search://{CREATIVE_VECTOR_SEARCH_INDEX}/{creative_asset_id}"
+                ),
                 "thumbnail_uri": f"rag-reference://{reference_asset_id}/{creative_asset_id}.svg",
+                "video_preview_uri": f"/api/creative-variants/{creative_asset_id}/video-preview" if is_video else "",
+                "mp4_storage_uri": f"demo-mp4://{creative_asset_id}.mp4" if is_video else "",
+                "video_source_asset_id": payload.video_source_asset_id or reference_asset_id,
+                "end_card_text": video_headline if is_video else payload.end_card_text,
+                "cta_text": video_cta if is_video else payload.cta_text,
                 "generation_prompt": request["user_instructions"],
-                "generation_model": CREATIVE_MODEL_ENDPOINT,
+                "generation_model": variant_model_label,
+                "generation_model_id": variant_model_id,
+                "brand_guideline_id": brand_guideline["guideline_id"],
                 "generation_params_json": json.dumps(
                     {
                         "mode": CREATIVE_GENERATION_MODE,
-                        "model_endpoint": CREATIVE_MODEL_ENDPOINT,
-                        "model_invocation_status": model_invocation["status"],
-                        "model_response_summary": model_invocation.get("response_text", ""),
+                        "model_endpoint": variant_model_endpoint,
+                        "model_id": variant_model_id,
+                        "model_label": variant_model_label,
+                        "generation_model_ids": model_ids,
+                        "generation_model_labels": model_labels,
+                        "brand_guideline_id": brand_guideline["guideline_id"],
+                        "brand_guideline_version": brand_guideline["version"],
+                        "model_invocation_status": variant_model_invocation.get("status", "not_invoked"),
+                        "model_response_summary": variant_model_invocation.get("response_text", ""),
                         "retrieval_source": retrieval["source"],
                         "retrieval_query": retrieval["query"],
                         "vector_search_index": CREATIVE_VECTOR_SEARCH_INDEX,
@@ -4245,9 +6918,18 @@ async def create_creative_generation_request(payload: CreativeGenerationRequestI
                         "reference_thumbnail_uri": reference_asset.get("thumbnail_uri"),
                         "variant": index + 1,
                         "applied_edit_types": [step["transformation_type"] for step in edit_steps],
+                        "video_preview_uri": f"/api/creative-variants/{creative_asset_id}/video-preview" if is_video else "",
+                        "end_card_text": video_headline if is_video else payload.end_card_text,
+                        "cta_text": video_cta if is_video else payload.cta_text,
+                        "video_treatment": video_treatment if is_video else {},
+                        "visual_treatment": visual_treatment,
                     }
                 ),
-                "adaptation_summary": f"Generated from RAG seed reference {_as_text(reference_asset.get('asset_name'), reference_asset_id)}. {_adaptation_summary(edit_steps, payload.placement)}",
+                "adaptation_summary": (
+                    f"Generated 15s MP4 end card with {visual_treatment['element_primary']} and {video_treatment['name']} treatment from approved video seed {_as_text(reference_asset.get('asset_name'), reference_asset_id)}."
+                    if is_video
+                    else f"Generated {visual_treatment['element_primary']} for {visual_treatment['audience_name']} from RAG seed reference {_as_text(reference_asset.get('asset_name'), reference_asset_id)}. {_adaptation_summary(edit_steps, payload.placement)}"
+                ),
                 "approval_status": "Pending_Review",
                 "approved_by": "",
                 "approved_ts": None,
@@ -4256,7 +6938,7 @@ async def create_creative_generation_request(payload: CreativeGenerationRequestI
                 "quality_score": 82 + index * 4,
                 "predicted_ctr": round(1.02 + index * 0.12, 2),
                 "target_segment": cohort_name,
-                "content_tags": f"rag_seed_reference,{payload.placement},{_as_text(reference_asset.get('category_slug'), payload.category)},live_request",
+                "content_tags": f"rag_seed_reference,{payload.placement},{_as_text(reference_asset.get('category_slug'), payload.category)},live_request,{visual_treatment['treatment_id']},{video_treatment['treatment_id'] if is_video else 'image'}",
             }
         )
     _lakebase_persist_rows("generation_requests", [request], "generation_request_created")
@@ -4273,7 +6955,10 @@ async def create_creative_generation_request(payload: CreativeGenerationRequestI
         "variants": variants,
         "transformations": transformations,
         "mode": CREATIVE_GENERATION_MODE,
-        "model_invocation": model_invocation,
+        "brand_guideline": brand_guideline,
+        "generation_model": primary_model,
+        "generation_models": generation_models,
+        "model_invocations": model_invocations,
         "retrieval": {
             **retrieval,
             "reference_assets": [
@@ -4310,6 +6995,56 @@ async def creative_variants(
     return variants
 
 
+@app.get("/api/creative-variants/{creative_asset_id}/video-preview")
+async def creative_variant_video_preview(creative_asset_id: str) -> Response:
+    variants = _dedupe_by_key(
+        [*_lakebase_rows("creative_variants"), *LIVE_CREATIVE_VARIANTS, *_creative_workflow_data()["variants"]],
+        "creative_asset_id",
+    )
+    variant = next((item for item in variants if item.get("creative_asset_id") == creative_asset_id), None)
+    if not variant:
+        raise HTTPException(status_code=404, detail="Creative variant not found")
+    mp4_uri = _as_text(variant.get("mp4_storage_uri") or variant.get("storage_uri"))
+    seed_path = _demo_video_seed_path_for_variant(variant)
+    if seed_path is not None:
+        return FileResponse(
+            seed_path,
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": f'inline; filename="{seed_path.name}"',
+                "X-Demo-Video-Preview": "generated-video-seed-file",
+            },
+        )
+    if mp4_uri.startswith("/"):
+        mp4_path = Path(mp4_uri)
+        if mp4_path.exists():
+            return FileResponse(mp4_path, media_type="video/mp4")
+        volume_content = _download_volume_file(mp4_path)
+        if volume_content is not None:
+            return Response(
+                content=volume_content,
+                media_type="video/mp4",
+                headers={"Content-Disposition": f'inline; filename="{creative_asset_id}.mp4"'},
+            )
+    if DEMO_VIDEO_ASSET.exists():
+        return FileResponse(
+            DEMO_VIDEO_ASSET,
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": f'inline; filename="{creative_asset_id}.mp4"',
+                "X-Demo-Video-Preview": "sample-mp4-asset",
+            },
+        )
+    return Response(
+        content=_demo_mp4_bytes(),
+        media_type="video/mp4",
+        headers={
+            "Content-Disposition": f'inline; filename="{creative_asset_id}.mp4"',
+            "X-Demo-Video-Preview": "mp4-container-fallback",
+        },
+    )
+
+
 @app.post("/api/creative-variants/{creative_asset_id}/approval")
 async def approve_creative_variant(creative_asset_id: str, payload: CreativeApprovalRequest) -> dict[str, Any]:
     decision = payload.decision.strip()
@@ -4317,7 +7052,11 @@ async def approve_creative_variant(creative_asset_id: str, payload: CreativeAppr
         raise HTTPException(status_code=400, detail="decision must be Approved, Rejected, or Pending_Review")
 
     workflow = _creative_workflow_data()
-    variant = next((item for item in LIVE_CREATIVE_VARIANTS + workflow["variants"] if item.get("creative_asset_id") == creative_asset_id), None)
+    variants = _dedupe_by_key(
+        [*LIVE_CREATIVE_VARIANTS, *_lakebase_rows("creative_variants"), *workflow["variants"]],
+        "creative_asset_id",
+    )
+    variant = next((item for item in variants if item.get("creative_asset_id") == creative_asset_id), None)
     if not variant:
         snapshot = payload.variant_snapshot or {}
         if snapshot.get("creative_asset_id") == creative_asset_id:
@@ -4340,17 +7079,19 @@ async def approve_creative_variant(creative_asset_id: str, payload: CreativeAppr
             },
         )
 
-    evaluations = [item for item in workflow["synthetic_evaluations"] if item.get("creative_asset_id") == creative_asset_id]
+    all_evaluations = _dedupe_by_key(
+        [*_lakebase_rows("synthetic_evaluations"), *workflow["synthetic_evaluations"]],
+        "evaluation_id",
+    )
+    evaluations = [item for item in all_evaluations if item.get("creative_asset_id") == creative_asset_id]
     selected_evaluation = None
+    generated_evaluation = False
     if payload.evaluation_id:
         selected_evaluation = next((item for item in evaluations if item.get("evaluation_id") == payload.evaluation_id), None)
         if decision == "Approved" and not selected_evaluation:
             raise HTTPException(status_code=409, detail="Requested evaluation row was not found for this creative.")
     elif evaluations:
         selected_evaluation = max(evaluations, key=lambda item: _as_float_value(item.get("overall_score"), 0.0))
-
-    if decision == "Approved" and payload.require_evaluation and not selected_evaluation:
-        raise HTTPException(status_code=409, detail="Synthetic evaluation is required before approval.")
 
     approved_ts = time.strftime("%Y-%m-%d %H:%M:%S") if decision == "Approved" else None
     updated_variant = {
@@ -4360,11 +7101,70 @@ async def approve_creative_variant(creative_asset_id: str, payload: CreativeAppr
         "approved_ts": approved_ts,
         "updated_ts": approved_ts or time.strftime("%Y-%m-%d %H:%M:%S"),
     }
+    asset_materialization = {
+        "status": "not_requested" if decision != "Approved" else "not_started",
+        "target_uri": "",
+        "source_uri": "",
+        "media_type": "",
+        "bytes": 0,
+        "error": "",
+    }
+    if decision == "Approved":
+        materialization_updates, asset_materialization = _materialize_approved_variant_asset(
+            updated_variant,
+            approved_ts or time.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        updated_variant = {**updated_variant, **materialization_updates}
+    uc_external_lineage = {
+        "enabled": UC_EXTERNAL_LINEAGE_ENABLED,
+        "status": "not_requested" if decision != "Approved" else "not_started",
+        "metadata_name": "",
+        "relationships": [],
+    }
+    if decision == "Approved":
+        lineage_updates, uc_external_lineage = _publish_uc_external_lineage_for_variant(
+            updated_variant,
+            asset_materialization,
+        )
+        updated_variant = {**updated_variant, **lineage_updates}
+
+    if decision == "Approved" and not selected_evaluation:
+        selected_evaluation = _approval_gate_evaluation_for_variant(
+            updated_variant,
+            all_evaluations,
+            approved_ts or time.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        generated_evaluation = True
+
+    if decision == "Approved" and payload.require_evaluation and not selected_evaluation:
+        raise HTTPException(status_code=409, detail="Synthetic evaluation is required before approval.")
+
+    live_updated = False
     for index, item in enumerate(LIVE_CREATIVE_VARIANTS):
         if item.get("creative_asset_id") == creative_asset_id:
             LIVE_CREATIVE_VARIANTS[index] = updated_variant
+            live_updated = True
             break
-    _lakebase_persist_rows("creative_variants", [updated_variant], "creative_variant_approval_updated")
+    if not live_updated:
+        LIVE_CREATIVE_VARIANTS.insert(0, updated_variant)
+        del LIVE_CREATIVE_VARIANTS[60:]
+    variant_lakebase_persisted = _lakebase_persist_rows("creative_variants", [updated_variant], "creative_variant_approval_updated")
+    evaluation_lakebase_persisted = False
+    channel_matrix = None
+    if decision == "Approved" and selected_evaluation:
+        evaluation_lakebase_persisted = _lakebase_persist_rows(
+            "synthetic_evaluations",
+            [selected_evaluation],
+            "synthetic_evaluation_approval_gate_created" if generated_evaluation else "synthetic_evaluation_approval_gate_attached",
+        )
+        matrix_rows = _evaluation_channel_matrix_rows(
+            {
+                "variants": [updated_variant],
+                "evaluations": [selected_evaluation],
+                "evaluation_rubrics": _evaluation_rubrics_data(),
+            }
+        )
+        channel_matrix = matrix_rows[0] if matrix_rows else None
 
     persisted = False
     persistence_error = ""
@@ -4372,12 +7172,18 @@ async def approve_creative_variant(creative_asset_id: str, payload: CreativeAppr
         try:
             approved_by_expr = _sql_literal(payload.reviewer) if decision == "Approved" else "''"
             approved_ts_expr = "current_timestamp()" if decision == "Approved" else "NULL"
+            storage_uri_expr = _sql_literal(updated_variant.get("storage_uri", ""))
+            thumbnail_uri_expr = _sql_literal(updated_variant.get("thumbnail_uri", ""))
+            format_expr = _sql_literal(updated_variant.get("format", ""))
             _execute_sql(
                 f"""
                 UPDATE {_pipeline_table("gold_buyside_creative_variant")}
                 SET approval_status = {_sql_literal(decision)},
                     approved_by = {approved_by_expr},
                     approved_ts = {approved_ts_expr},
+                    storage_uri = {storage_uri_expr},
+                    thumbnail_uri = {thumbnail_uri_expr},
+                    format = {format_expr},
                     updated_ts = current_timestamp()
                 WHERE creative_asset_id = {_sql_literal(creative_asset_id)}
                 """,
@@ -4400,9 +7206,49 @@ async def approve_creative_variant(creative_asset_id: str, payload: CreativeAppr
             "warnings": [item.get("check_id") for item in policy_checks if _as_text(item.get("check_status")).lower() == "warn"],
             "approved_ts": approved_ts,
             "persisted": persisted,
+            "app_state_persisted": variant_lakebase_persisted,
+            "evaluation": selected_evaluation,
+            "evaluation_generated": generated_evaluation,
+            "evaluation_persisted": evaluation_lakebase_persisted,
+            "channel_matrix": channel_matrix,
             "persistence_error": persistence_error,
+            "asset_materialization": asset_materialization,
+            "uc_external_lineage": uc_external_lineage,
         },
         "mode": CREATIVE_GENERATION_MODE,
+    }
+
+
+@app.post("/api/creative-variants/{creative_asset_id}/uc-external-lineage")
+async def publish_creative_variant_uc_external_lineage(creative_asset_id: str) -> dict[str, Any]:
+    variants = _dedupe_by_key(
+        [*_lakebase_rows("creative_variants"), *LIVE_CREATIVE_VARIANTS, *_creative_workflow_data()["variants"]],
+        "creative_asset_id",
+    )
+    variant = next((item for item in variants if item.get("creative_asset_id") == creative_asset_id), None)
+    if not variant:
+        raise HTTPException(status_code=404, detail="Creative variant not found")
+
+    target_uri = _as_text(variant.get("approved_asset_uri") or variant.get("storage_uri"))
+    materialization = {
+        "status": "existing_asset",
+        "target_uri": target_uri,
+        "source_uri": _as_text(variant.get("reference_thumbnail_uri") or variant.get("source_asset_id")),
+        "media_type": _as_text(variant.get("approved_asset_media_type")),
+        "bytes": _as_int_value(variant.get("approved_asset_bytes")),
+        "error": "",
+    }
+    lineage_updates, uc_external_lineage = _publish_uc_external_lineage_for_variant(variant, materialization)
+    updated_variant = {**variant, **lineage_updates}
+    if lineage_updates:
+        for index, item in enumerate(LIVE_CREATIVE_VARIANTS):
+            if item.get("creative_asset_id") == creative_asset_id:
+                LIVE_CREATIVE_VARIANTS[index] = updated_variant
+                break
+        _lakebase_persist_rows("creative_variants", [updated_variant], "creative_variant_uc_external_lineage_published")
+    return {
+        "variant": updated_variant,
+        "uc_external_lineage": uc_external_lineage,
     }
 
 
@@ -4598,6 +7444,8 @@ async def run_policy_checks(creative_asset_id: str) -> dict[str, Any]:
                         "mode": CREATIVE_GENERATION_MODE,
                         "model_endpoint": CREATIVE_POLICY_MODEL_ENDPOINT,
                         "model_invocation_status": model_invocation["status"],
+                        "brand_guideline_id": _default_brand_guideline()["guideline_id"],
+                        "brand_guideline_version": _default_brand_guideline()["version"],
                     }
                 ),
                 "policy_version": "2026.05-demo",
@@ -4627,6 +7475,11 @@ async def synthetic_evaluations(
     if placement:
         rows = [item for item in rows if item.get("placement") == placement]
     return rows
+
+
+@app.get("/api/synthetic-evaluations/{evaluation_id}/score-explanation")
+async def synthetic_evaluation_score_explanation(evaluation_id: str) -> dict[str, Any]:
+    return _score_explanation_for_evaluation(evaluation_id)
 
 
 @app.post("/api/synthetic-evaluations/run")
@@ -4770,4 +7623,5 @@ async def serve_app(full_path: str) -> Any:
 
 if __name__ == "__main__":
     port = int(os.getenv("DATABRICKS_APP_PORT", os.getenv("PORT", "8000")))
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
+    host = os.getenv("DATABRICKS_APP_HOST", "0.0.0.0")
+    uvicorn.run("app.main:app", host=host, port=port)

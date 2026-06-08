@@ -5,106 +5,14 @@ resources:
       description: Creative Command Center demo with a Databricks SQL pipeline backend, CSV fallback, and React frontend.
       source_code_path: ..
       resources:
-        - name: creative-workflow-genie-space
-          description: Curated Genie Space used by Ask AI for creative workflow analytics.
-          genie_space:
-            name: creative-workflow-genie-space
-            space_id: ${var.creative_workflow_genie_space_id}
-            permission: CAN_RUN
         - name: creative-workflow-sql-wh
-          description: SQL warehouse used by the app backend and Genie queries.
+          description: SQL warehouse used by the app backend.
           sql_warehouse:
             id: ${var.creative_workflow_sql_warehouse_id}
             permission: CAN_USE
-        - name: lakebase-state
-          description: Lakebase database used to persist generated variants, approvals, activations, and app state changes.
-          database:
-            instance_name: ${var.lakebase_instance_name}
-            database_name: creative_command_center_state
-            permission: CAN_CONNECT_AND_CREATE
-        - name: lf-creative-assets-vol
-          description: UC volume that stores creative source images and generated variant thumbnails.
+        - name: creative-assets-volume
+          description: UC volume containing seeded and generated creative image assets.
           uc_securable:
             securable_type: VOLUME
             securable_full_name: cme_outcomes_uswest.lakefoundry.artifacts
             permission: READ_VOLUME
-        - name: lakefoundry-activation-export
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_activation_export
-            permission: SELECT
-        - name: lf-asset-rights-profile
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_asset_rights_profile
-            permission: SELECT
-        - name: lf-asset-search-corpus
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_asset_search_corpus
-            permission: SELECT
-        - name: lakefoundry-audience-cohort
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_audience_cohort
-            permission: SELECT
-        - name: lf-audience-trait-profile
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_audience_trait_profile
-            permission: SELECT
-        - name: lf-base-creative-asset
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_base_creative_asset
-            permission: SELECT
-        - name: lf-campaign-activation
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_campaign_activation
-            permission: SELECT
-        - name: lakefoundry-generation-request
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_creative_generation_request
-            permission: SELECT
-        - name: lakefoundry-lineage-edge
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_creative_lineage_edge
-            permission: SELECT
-        - name: lakefoundry-policy-check
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_creative_policy_check
-            permission: SELECT
-        - name: lakefoundry-transformation
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_creative_transformation
-            permission: SELECT
-        - name: lakefoundry-creative-variant
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_creative_variant
-            permission: SELECT
-        - name: lf-generated-creatives
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_generated_creatives
-            permission: SELECT
-        - name: lakefoundry-synthetic-eval
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_synthetic_audience_eval
-            permission: SELECT
-        - name: lakefoundry-synthetic-panel
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.lakefoundry.gold_buyside_synthetic_audience_panel
-            permission: SELECT
-        - name: media-creative-briefs
-          uc_securable:
-            securable_type: TABLE
-            securable_full_name: cme_outcomes_uswest.media_demo.gold_media_creative_briefs
-            permission: SELECT
