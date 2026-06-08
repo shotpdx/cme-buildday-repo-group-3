@@ -46,6 +46,8 @@ env:
     value: gold_buyside_creative_variant
   - name: CREATIVE_SEED_IMAGE_PATH
     value: /Volumes/cme_outcomes_uswest/lakefoundry/artifacts/creative_assets/seed_images
+  - name: CREATIVE_VIDEO_SEED_PATH
+    value: /Volumes/cme_outcomes_uswest/lakefoundry/artifacts/creative_assets/video_seeds
   - name: CREATIVE_VECTOR_SEARCH_ENDPOINT
     value: creative-asset-search-dev
   - name: CREATIVE_VECTOR_SEARCH_INDEX

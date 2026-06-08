@@ -41,6 +41,7 @@ LIVE_ACTIVATION_SUBMISSIONS: list[dict[str, Any]] = []
 LIVE_GENERATION_REQUESTS: list[dict[str, Any]] = []
 LIVE_CREATIVE_VARIANTS: list[dict[str, Any]] = []
 LIVE_CREATIVE_TRANSFORMATIONS: list[dict[str, Any]] = []
+LIVE_SYNTHETIC_EVALUATIONS: list[dict[str, Any]] = []
 
 APP_DATA_SOURCE = os.getenv("APP_DATA_SOURCE", os.getenv("DATA_SOURCE", "csv")).strip().lower()
 USE_PIPELINE_DATA = APP_DATA_SOURCE in {"databricks", "pipeline", "warehouse"} or os.getenv(
@@ -64,6 +65,7 @@ CREATIVE_ASSET_VOLUME = os.getenv("CREATIVE_ASSET_VOLUME", "artifacts")
 CREATIVE_ASSET_PREFIX = os.getenv("CREATIVE_ASSET_PREFIX", "creative_assets").strip().strip("/")
 CREATIVE_APPROVED_ASSET_PREFIX = os.getenv("CREATIVE_APPROVED_ASSET_PREFIX", "approved").strip().strip("/")
 CREATIVE_SEED_IMAGE_PATH = os.getenv("CREATIVE_SEED_IMAGE_PATH", "").strip()
+CREATIVE_VIDEO_SEED_PATH = os.getenv("CREATIVE_VIDEO_SEED_PATH", "").strip()
 CREATIVE_VECTOR_SEARCH_ENDPOINT = os.getenv("CREATIVE_VECTOR_SEARCH_ENDPOINT", "creative-asset-search-dev")
 CREATIVE_VECTOR_SEARCH_INDEX = os.getenv(
     "CREATIVE_VECTOR_SEARCH_INDEX",
@@ -3875,6 +3877,10 @@ def _creative_seed_image_dir() -> Path:
     return Path(CREATIVE_SEED_IMAGE_PATH or _creative_volume_uri("seed_images"))
 
 
+def _creative_video_seed_dir() -> Path:
+    return Path(CREATIVE_VIDEO_SEED_PATH or _creative_volume_uri("video_seeds"))
+
+
 def _media_type_for_path(path: Path) -> str:
     media_type, _ = mimetypes.guess_type(str(path))
     return media_type or "application/octet-stream"
@@ -3932,14 +3938,33 @@ def _normal_slug(value: Any) -> str:
     return "_".join(part for part in "".join(char if char.isalnum() else " " for char in token).split() if part)
 
 
-def _demo_video_seed_path_from_uri(uri: Any) -> Path | None:
+def _video_seed_filename_from_uri(uri: Any) -> str | None:
     value = _as_text(uri)
     prefix = "demo-video-seed://"
     if not value.startswith(prefix):
         return None
-    filename = _safe_volume_filename(value.removeprefix(prefix).split("/")[-1], "video_seed.mp4")
+    return _safe_volume_filename(value.removeprefix(prefix).split("/")[-1], "video_seed.mp4")
+
+
+def _demo_video_seed_path_from_uri(uri: Any) -> Path | None:
+    filename = _video_seed_filename_from_uri(uri)
+    if filename is None:
+        return None
     path = DEMO_VIDEO_SEED_DIR / filename
     return path if path.exists() else None
+
+
+def _load_video_seed_content(filename: str) -> bytes | None:
+    volume_dir = _creative_video_seed_dir()
+    if _is_uc_volume_path(volume_dir):
+        volume_path = volume_dir / filename
+        content = _download_volume_file(volume_path)
+        if content is not None:
+            return content
+    local_path = DEMO_VIDEO_SEED_DIR / filename
+    if local_path.exists():
+        return local_path.read_bytes()
+    return None
 
 
 def _demo_video_seed_path_for_variant(variant: dict[str, Any]) -> Path | None:
@@ -3984,11 +4009,59 @@ def _demo_video_seed_path_for_variant(variant: dict[str, Any]) -> Path | None:
     return seed_files[min(index, len(seed_files) - 1)]
 
 
+def _video_seed_filename_for_variant(variant: dict[str, Any]) -> str | None:
+    uri = variant.get("mp4_storage_uri") or variant.get("storage_uri")
+    direct_filename = _video_seed_filename_from_uri(uri)
+    if direct_filename:
+        return direct_filename
+    source_ids = {
+        _as_text(variant.get("video_source_asset_id")),
+        _as_text(variant.get("reference_asset_id")),
+        _as_text(variant.get("source_asset_id")),
+        _as_text(variant.get("parent_creative_asset_id")),
+    }
+    source_ids = {item for item in source_ids if item}
+    placement = _as_text(variant.get("placement"))
+    category_slug = _normal_slug(variant.get("reference_demo_category") or variant.get("target_segment") or variant.get("asset_name"))
+    candidates = []
+    for asset in _approved_video_base_assets():
+        filename = _video_seed_filename_from_uri(asset.get("storage_uri"))
+        if filename is None:
+            continue
+        asset_ids = {_as_text(asset.get("asset_id")), *_asset_related_ids(asset)}
+        id_match = bool(source_ids.intersection(asset_ids))
+        placement_match = not placement or _as_text(asset.get("placement")) == placement
+        category_match = category_slug and (
+            category_slug in _normal_slug(asset.get("demo_category"))
+            or category_slug in _normal_slug(asset.get("category_slug"))
+            or _normal_slug(asset.get("category_slug")) in category_slug
+        )
+        if id_match and placement_match:
+            return filename
+        if placement_match and category_match:
+            candidates.append(filename)
+        elif id_match:
+            candidates.append(filename)
+    if candidates:
+        return candidates[0]
+    return None
+
+
 def _video_media_content_for_variant(variant: dict[str, Any]) -> tuple[bytes, str, str, str]:
     uri = _as_text(variant.get("mp4_storage_uri") or variant.get("storage_uri"))
+    filename = _video_seed_filename_for_variant(variant)
+    if filename:
+        content = _load_video_seed_content(filename)
+        if content is not None:
+            return content, "video/mp4", ".mp4", filename
     seed_path = _demo_video_seed_path_for_variant(variant)
     if seed_path is not None:
-        return seed_path.read_bytes(), "video/mp4", ".mp4", str(seed_path)
+        if _is_uc_volume_path(seed_path):
+            volume_content = _download_volume_file(seed_path)
+            if volume_content is not None:
+                return volume_content, "video/mp4", ".mp4", str(seed_path)
+        elif seed_path.exists():
+            return seed_path.read_bytes(), "video/mp4", ".mp4", str(seed_path)
     if uri:
         path = Path(uri)
         if path.exists():
@@ -6230,7 +6303,13 @@ def _activation_lineage_payload(activation_id: str) -> dict[str, Any]:
     brand_policy_rules = _loads_json((brand_guideline or {}).get("blocked_claims_json"), [])
     brand_policy_rule_count = len(brand_policy_rules) if isinstance(brand_policy_rules, list) else 0
     is_video_variant = _is_video_content(_as_text((variant or {}).get("content_type"))) or _as_text((variant or {}).get("format")).upper() == "MP4"
+    is_video_source = (
+        _is_video_content(_as_text((reference_asset or {}).get("asset_type")))
+        or _as_text((reference_asset or {}).get("format")).upper() == "MP4"
+        or "video" in _as_text((reference_asset or {}).get("asset_name")).lower()
+    )
     source_preview_uri = f"/api/creative-assets/{reference_asset_id}/thumbnail" if reference_asset_id else ""
+    source_video_preview_uri = f"/api/creative-assets/{reference_asset_id}/video-preview" if reference_asset_id and is_video_source else ""
     final_preview_uri = f"/api/creative-assets/{creative_id}/thumbnail" if creative_id else ""
     video_preview_uri = f"/api/creative-variants/{creative_id}/video-preview" if creative_id and is_video_variant else ""
 
@@ -6466,6 +6545,7 @@ def _activation_lineage_payload(activation_id: str) -> dict[str, Any]:
         "reference_asset": reference_asset,
         "brand_guideline": brand_guideline,
         "source_preview_uri": source_preview_uri,
+        "source_video_preview_uri": source_video_preview_uri,
         "final_preview_uri": final_preview_uri,
         "video_preview_uri": video_preview_uri,
         "steps": steps,
@@ -6554,16 +6634,18 @@ async def creative_asset_video_preview(asset_id: str) -> Response:
     if not asset or _as_text(asset.get("asset_type")).lower() != "video":
         raise HTTPException(status_code=404, detail="Approved video seed asset not found")
     mp4_uri = _as_text(asset.get("storage_uri"))
-    seed_path = _demo_video_seed_path_from_uri(mp4_uri)
-    if seed_path is not None:
-        return FileResponse(
-            seed_path,
-            media_type="video/mp4",
-            headers={
-                "Content-Disposition": f'inline; filename="{seed_path.name}"',
-                "X-Demo-Video-Preview": "approved-video-seed-file",
-            },
-        )
+    filename = _video_seed_filename_from_uri(mp4_uri)
+    if filename:
+        content = _load_video_seed_content(filename)
+        if content is not None:
+            return Response(
+                content=content,
+                media_type="video/mp4",
+                headers={
+                    "Content-Disposition": f'inline; filename="{filename}"',
+                    "X-Demo-Video-Preview": "approved-video-seed-file",
+                },
+            )
     if mp4_uri.startswith("/"):
         mp4_path = Path(mp4_uri)
         if mp4_path.exists():
@@ -7005,16 +7087,18 @@ async def creative_variant_video_preview(creative_asset_id: str) -> Response:
     if not variant:
         raise HTTPException(status_code=404, detail="Creative variant not found")
     mp4_uri = _as_text(variant.get("mp4_storage_uri") or variant.get("storage_uri"))
-    seed_path = _demo_video_seed_path_for_variant(variant)
-    if seed_path is not None:
-        return FileResponse(
-            seed_path,
-            media_type="video/mp4",
-            headers={
-                "Content-Disposition": f'inline; filename="{seed_path.name}"',
-                "X-Demo-Video-Preview": "generated-video-seed-file",
-            },
-        )
+    filename = _video_seed_filename_for_variant(variant)
+    if filename:
+        content = _load_video_seed_content(filename)
+        if content is not None:
+            return Response(
+                content=content,
+                media_type="video/mp4",
+                headers={
+                    "Content-Disposition": f'inline; filename="{filename}"',
+                    "X-Demo-Video-Preview": "generated-video-seed-file",
+                },
+            )
     if mp4_uri.startswith("/"):
         mp4_path = Path(mp4_uri)
         if mp4_path.exists():
@@ -7152,6 +7236,16 @@ async def approve_creative_variant(creative_asset_id: str, payload: CreativeAppr
     evaluation_lakebase_persisted = False
     channel_matrix = None
     if decision == "Approved" and selected_evaluation:
+        # Add evaluation to in-memory list for immediate availability
+        existing_eval_idx = next(
+            (i for i, e in enumerate(LIVE_SYNTHETIC_EVALUATIONS) if e.get("evaluation_id") == selected_evaluation.get("evaluation_id")),
+            None,
+        )
+        if existing_eval_idx is not None:
+            LIVE_SYNTHETIC_EVALUATIONS[existing_eval_idx] = selected_evaluation
+        else:
+            LIVE_SYNTHETIC_EVALUATIONS.insert(0, selected_evaluation)
+            del LIVE_SYNTHETIC_EVALUATIONS[100:]
         evaluation_lakebase_persisted = _lakebase_persist_rows(
             "synthetic_evaluations",
             [selected_evaluation],
@@ -7465,7 +7559,7 @@ async def synthetic_evaluations(
     placement: str = "",
 ) -> list[dict[str, Any]]:
     rows = _dedupe_by_key(
-        [*_lakebase_rows("synthetic_evaluations"), *_creative_workflow_data()["synthetic_evaluations"]],
+        [*LIVE_SYNTHETIC_EVALUATIONS, *_lakebase_rows("synthetic_evaluations"), *_creative_workflow_data()["synthetic_evaluations"]],
         "evaluation_id",
     )
     if creative_asset_id:

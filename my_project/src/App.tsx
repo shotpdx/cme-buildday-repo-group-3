@@ -339,6 +339,7 @@ type ActivationLineage = {
   synthetic_evaluations: SyntheticEvaluation[];
   lineage_edges: CreativeLineageEdge[];
   source_preview_uri?: string;
+  source_video_preview_uri?: string;
   final_preview_uri?: string;
   video_preview_uri?: string;
   source_volume_url?: string;
@@ -647,9 +648,9 @@ const ARCHITECTURE_ROWS = [
     gold: ["gold_audience_trait_profile", "segment-ready traits"],
   },
   {
-    source: ["Seed Images", "UC Volume by category"],
+    source: ["Seed Assets", "UC Volume images + videos"],
     stream: ["asset.manifest", "metadata + rights + preview"],
-    bronze: ["volume image files", "governed PNG assets"],
+    bronze: ["volume media files", "governed PNG/MP4 assets"],
     silver: ["asset search corpus", "embedding-ready text"],
     gold: ["Vector Search Index", "governed retrieval"],
   },
@@ -665,7 +666,7 @@ const ARCHITECTURE_ROWS = [
     stream: ["creative.adapt", "placement transforms"],
     bronze: ["edit request", "target placement"],
     silver: ["transformation log", "crop/inpaint/outpaint/etc."],
-    gold: ["gold_creative_transformation", "lineage + reuse"],
+    gold: ["gold_transformation", "lineage + reuse"],
   },
   {
     source: ["Review + Activate", "policy, judge, approval"],
@@ -690,8 +691,8 @@ const ARCH_PLATFORM_SERVICES = [
   ["Databricks Apps", "React + FastAPI runtime"],
   ["Genie", "curated questions + governed fallback"],
   ["Lakebase", "persistent app state"],
-  ["Vector Search", "seed-image RAG index"],
-  ["UC Volumes", "category seed images"],
+  ["Vector Search", "seed-asset RAG index"],
+  ["UC Volumes", "seed images + video seeds"],
 ];
 const DATA_CONTRACT_GAPS: DataContractGap[] = [
   {
@@ -703,8 +704,8 @@ const DATA_CONTRACT_GAPS: DataContractGap[] = [
   {
     surface: "Approved base assets",
     mockCsv: "Demo fallback creates governed source assets with rights metadata, performance metadata, and approved channel contexts.",
-    pipeline: "UC Volume seed_images/manifest.json, gold_buyside_base_creative_asset, and gold_buyside_asset_search_corpus back category retrieval and Vector Search.",
-    recommendation: "Use the manifest for visual inspection and the search corpus for retrieval; keep category, placement, rights, and related app asset IDs aligned.",
+    pipeline: "UC Volume seed_images/ and video_seeds/ directories, gold_buyside_base_creative_asset, and gold_buyside_asset_search_corpus back category retrieval and Vector Search.",
+    recommendation: "Use the manifest for visual inspection and the search corpus for retrieval; keep category, placement, rights, and related app asset IDs aligned. Video seeds are stored in /Volumes/.../video_seeds/ with treatment metadata applied at render time.",
   },
   {
     surface: "Generation and adaptation",
@@ -1496,6 +1497,24 @@ function App() {
     });
   }
 
+  function handleApprovalComplete(variant: CreativeVariant, evaluation: SyntheticEvaluation | null) {
+    setData((current) => {
+      if (!current) return current;
+      const updatedVariants = [
+        variant,
+        ...current.creativeVariants.filter((v) => v.creative_asset_id !== variant.creative_asset_id),
+      ];
+      const updatedEvaluations = evaluation
+        ? [evaluation, ...current.syntheticEvaluations.filter((e) => e.evaluation_id !== evaluation.evaluation_id)]
+        : current.syntheticEvaluations;
+      return {
+        ...current,
+        creativeVariants: updatedVariants,
+        syntheticEvaluations: updatedEvaluations,
+      };
+    });
+  }
+
   return (
     <div className="min-h-screen bg-[var(--canvas)]">
       <motion.aside
@@ -1603,7 +1622,7 @@ function App() {
                   {view === "overview" && <Overview data={data} />}
                   {view === "briefs" && <Briefs briefs={data.briefs} />}
                   {view === "audiences" && <Audiences audiences={data.audiences} modelStatus={data.modelStatus} />}
-                  {view === "studio" && <CreativeStudio data={data} />}
+                  {view === "studio" && <CreativeStudio data={data} onApprovalComplete={handleApprovalComplete} />}
                   {view === "evaluation" && <Evaluation data={data} onActivationSubmitted={handleActivationSubmitted} />}
                   {view === "activations" && <Activations activations={data.activations} newSubmissions={submittedActivations} />}
                   {view === "markets" && <Markets markets={data.markets} />}
@@ -2268,7 +2287,7 @@ function parseJsonObject(value: string | undefined) {
   }
 }
 
-function CreativeStudio({ data }: { data: AgencyData }) {
+function CreativeStudio({ data, onApprovalComplete }: { data: AgencyData; onApprovalComplete?: (variant: CreativeVariant, evaluation: SyntheticEvaluation | null) => void }) {
   const [briefId, setBriefId] = useState(data.briefs[0]?.brief_id ?? "");
   const [cohortId, setCohortId] = useState(data.audiences[0]?.cohort_id ?? "");
   const [placement, setPlacement] = useState("homepage_hero");
@@ -2502,6 +2521,10 @@ function CreativeStudio({ data }: { data: AgencyData }) {
       if (!response.ok) throw new Error(payload.detail?.message ?? payload.detail ?? "Approval failed");
       setApprovalOverrides((current) => ({ ...current, [variant.creative_asset_id]: payload.variant }));
       setApprovalMessage(`Approved: ${payload.variant.asset_name}`);
+      // Notify parent to update data state so Evaluation page sees the new evaluation
+      if (onApprovalComplete) {
+        onApprovalComplete(payload.variant, payload.approval?.evaluation ?? null);
+      }
     } catch (err) {
       setApprovalError(err instanceof Error ? err.message : "Approval failed");
     } finally {
@@ -2791,7 +2814,11 @@ function CreativeStudio({ data }: { data: AgencyData }) {
                   onClick={() => setSelectedAssetId(asset.asset_id)}
                   className={`overflow-hidden rounded-lg border text-left transition-colors ${selectedAssetId === asset.asset_id ? "border-[var(--brand-accent)] bg-[var(--panel-soft)]" : "border-[var(--line)] bg-white hover:bg-[var(--panel-soft)]/65"}`}
                 >
-                  <img src={`/api/creative-assets/${asset.asset_id}/thumbnail`} alt="" className="h-32 w-full bg-[var(--panel-soft)] object-contain" />
+                  {asset.asset_type?.toLowerCase() === "video" ? (
+                    <video src={`/api/creative-assets/${asset.asset_id}/video-preview`} className="h-32 w-full bg-[var(--panel-soft)] object-contain" controls muted />
+                  ) : (
+                    <img src={`/api/creative-assets/${asset.asset_id}/thumbnail`} alt="" className="h-32 w-full bg-[var(--panel-soft)] object-contain" />
+                  )}
                   <div className="p-3">
                     <p className="text-[10px] font-bold uppercase text-[var(--faint)]">{asset.demo_category ?? labelize(asset.category_slug ?? asset.asset_type)}</p>
                     <p className="text-[13px] font-bold text-[var(--ink)]">{asset.asset_name}</p>
@@ -2826,6 +2853,9 @@ function CreativeStudio({ data }: { data: AgencyData }) {
             const generationParams = parseJsonObject(variant.generation_params_json);
             const referenceName = variant.reference_asset_name ?? String(generationParams.reference_asset_name ?? variant.source_asset_id);
             const retrievalSource = String(generationParams.retrieval_source ?? "");
+            const videoTreatment = generationParams.video_treatment as { accent?: string; secondary?: string; filter_css?: string; name?: string } | undefined;
+            const filterCss = videoTreatment?.filter_css ?? "";
+            const accentColor = videoTreatment?.accent ?? "#0f9f95";
             return (
             <article
               key={variant.creative_asset_id}
@@ -2837,7 +2867,15 @@ function CreativeStudio({ data }: { data: AgencyData }) {
                 className="group relative block h-40 w-full overflow-hidden bg-[var(--panel-soft)] text-left"
                 aria-label={`Open full preview for ${variant.asset_name}`}
               >
-                <img src={`/api/creative-assets/${variant.creative_asset_id}/thumbnail`} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
+                {variant.asset_type?.toLowerCase() === "video" || variant.format?.toUpperCase() === "MP4" ? (
+                  <div className="relative h-full w-full">
+                    <video src={`/api/creative-variants/${variant.creative_asset_id}/video-preview`} className="h-full w-full object-cover" style={{ filter: filterCss || "saturate(1.1)" }} controls muted />
+                    <div className="pointer-events-none absolute inset-0" style={{ background: `linear-gradient(135deg, ${accentColor}55 0%, ${accentColor}20 50%, transparent 100%)`, mixBlendMode: "color" }} />
+                    <div className="absolute bottom-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold text-white shadow" style={{ backgroundColor: accentColor }}>{videoTreatment?.name ?? "Treatment"}</div>
+                  </div>
+                ) : (
+                  <img src={`/api/creative-assets/${variant.creative_asset_id}/thumbnail`} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
+                )}
                 <span className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/90 text-[var(--ink)] shadow-sm opacity-0 transition-opacity group-hover:opacity-100" title="Open full preview">
                   <Maximize2 size={16} />
                 </span>
@@ -2890,14 +2928,23 @@ function CreativeStudio({ data }: { data: AgencyData }) {
         </div>
       </Panel>
 
-      {previewVariant ? (
+      {previewVariant ? (() => {
+        const previewParams = parseJsonObject(previewVariant.generation_params_json);
+        const previewTreatment = previewParams.video_treatment as { accent?: string; secondary?: string; filter_css?: string; name?: string } | undefined;
+        const previewFilterCss = previewTreatment?.filter_css ?? "";
+        const previewAccentColor = previewTreatment?.accent ?? "#0f9f95";
+        const treatmentName = previewTreatment?.name ?? "";
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071523]/82 p-4">
           <button type="button" className="absolute inset-0 cursor-default" onClick={() => setPreviewVariant(null)} aria-label="Close full image preview" />
           <div className="relative z-10 w-full max-w-6xl overflow-hidden rounded-lg bg-white shadow-2xl">
             <div className="flex items-center justify-between gap-4 border-b border-[var(--line)] px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate text-[13px] font-bold text-[var(--ink)]">{previewVariant.asset_name}</p>
-                <p className="font-mono text-[11px] text-[var(--faint)]">{previewVariant.width_px}x{previewVariant.height_px} / {labelize(previewVariant.placement)}</p>
+                <p className="font-mono text-[11px] text-[var(--faint)]">
+                  {previewVariant.width_px}x{previewVariant.height_px} / {labelize(previewVariant.placement)}
+                  {treatmentName ? <span className="ml-2 rounded bg-[var(--panel-soft)] px-1.5 py-0.5 text-[10px]" style={{ color: previewAccentColor }}>{treatmentName}</span> : null}
+                </p>
               </div>
               <button
                 type="button"
@@ -2910,15 +2957,29 @@ function CreativeStudio({ data }: { data: AgencyData }) {
               </button>
             </div>
             <div className="bg-[#101820] p-3 sm:p-4">
-              <img
-                src={`/api/creative-assets/${previewVariant.creative_asset_id}/thumbnail`}
-                alt={`${previewVariant.asset_name} full preview`}
-                className="mx-auto max-h-[74vh] w-full object-contain"
-              />
+              {previewVariant.asset_type?.toLowerCase() === "video" || previewVariant.format?.toUpperCase() === "MP4" ? (
+                <div className="relative mx-auto max-h-[74vh] w-full">
+                  <video
+                    src={`/api/creative-variants/${previewVariant.creative_asset_id}/video-preview`}
+                    controls
+                    autoPlay
+                    className="mx-auto max-h-[74vh] w-full object-contain"
+                    style={{ filter: previewFilterCss || "saturate(1.1)" }}
+                  />
+                  <div className="pointer-events-none absolute inset-0" style={{ background: `linear-gradient(135deg, ${previewAccentColor}44 0%, ${previewAccentColor}15 60%, transparent 100%)`, mixBlendMode: "color" }} />
+                </div>
+              ) : (
+                <img
+                  src={`/api/creative-assets/${previewVariant.creative_asset_id}/thumbnail`}
+                  alt={`${previewVariant.asset_name} full preview`}
+                  className="mx-auto max-h-[74vh] w-full object-contain"
+                />
+              )}
             </div>
           </div>
         </div>
-      ) : null}
+        );
+      })() : null}
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel className="p-5">
@@ -3026,6 +3087,7 @@ function Evaluation({
   const [activatingId, setActivatingId] = useState("");
   const [scoreExplanation, setScoreExplanation] = useState<ScoreExplanation | null>(null);
   const [scoreExplanationLoading, setScoreExplanationLoading] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const approvedVariantIds = new Set(
     data.creativeVariants
       .filter((variant) => variant.approval_status === "Approved")
@@ -3036,7 +3098,22 @@ function Evaluation({
     if (a.rank_within_segment_placement !== b.rank_within_segment_placement) return a.rank_within_segment_placement - b.rank_within_segment_placement;
     return b.overall_score - a.overall_score;
   });
-  const topRows = ranked.slice(0, 10);
+  const searchLower = searchQuery.toLowerCase();
+  const filteredRanked = searchQuery
+    ? ranked.filter((evaluation) => {
+        const variant = data.creativeVariants.find((v) => v.creative_asset_id === evaluation.creative_asset_id);
+        const brief = data.briefs.find((b) => b.brief_id === variant?.brief_id);
+        const audience = data.audiences.find((a) => a.cohort_id === variant?.cohort_id);
+        return (
+          evaluation.creative_asset_id.toLowerCase().includes(searchLower) ||
+          (variant?.asset_name ?? "").toLowerCase().includes(searchLower) ||
+          (brief?.brief_name ?? "").toLowerCase().includes(searchLower) ||
+          (audience?.cohort_name ?? "").toLowerCase().includes(searchLower) ||
+          evaluation.placement.toLowerCase().includes(searchLower)
+        );
+      })
+    : ranked;
+  const topRows = filteredRanked;
   const readyActivationIds = new Set(data.activationExports.map((exportRecord) => exportRecord.export_id));
   data.activations
     .filter((activation) => activation.activation_source === "live_submission")
@@ -3141,10 +3218,19 @@ function Evaluation({
           title="Channel-by-variant matrix"
           eyebrow="Recommended channel can be overwritten"
           action={
-            <label className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-bold text-[var(--ink)]">
-              <input type="checkbox" checked={multiChannel} onChange={(event) => setMultiChannel(event.target.checked)} />
-              Multi-channel submit
-            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                placeholder="Search creatives, briefs, audiences..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-64 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] text-[var(--ink)] placeholder:text-[var(--faint)]"
+              />
+              <label className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-bold text-[var(--ink)]">
+                <input type="checkbox" checked={multiChannel} onChange={(event) => setMultiChannel(event.target.checked)} />
+                Multi-channel submit
+              </label>
+            </div>
           }
         />
         <div className="overflow-x-auto thin-scrollbar">
@@ -3152,6 +3238,7 @@ function Evaluation({
             <thead className="bg-[var(--panel-soft)] text-[11px] uppercase text-[var(--muted)]">
               <tr>
                 <th className="px-4 py-3">Variant</th>
+                <th className="px-4 py-3">Brief / Audience</th>
                 <th className="px-4 py-3">Placement</th>
                 <th className="px-4 py-3 text-right">Overall</th>
                 {ACTIVATION_CHANNELS.map((channel) => (
@@ -3170,6 +3257,8 @@ function Evaluation({
                 const approved = variant?.approval_status === "Approved";
                 const recommended = recommendedChannelFor(evaluation);
                 const selectedChannels = selectedChannelsFor(evaluation);
+                const linkedBrief = data.briefs.find((b) => b.brief_id === variant?.brief_id);
+                const linkedAudience = data.audiences.find((a) => a.cohort_id === variant?.cohort_id);
                 return (
                   <tr key={evaluation.evaluation_id} className="align-top hover:bg-[var(--panel-soft)]/70">
                     <td className="px-4 py-4">
@@ -3183,6 +3272,11 @@ function Evaluation({
                           </span>
                         ))}
                       </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="text-[12px] font-semibold text-[var(--ink)]">{linkedBrief?.brief_name ?? "—"}</p>
+                      <p className="mt-1 text-[11px] text-[var(--muted)]">{linkedAudience?.cohort_name ?? "—"}</p>
+                      {variant?.brief_id ? <p className="mt-1 font-mono text-[10px] text-[var(--faint)]">{variant.brief_id}</p> : null}
                     </td>
                     <td className="px-4 py-4 text-[13px] capitalize">{labelize(evaluation.placement)}</td>
                     <td className="px-4 py-4 text-right font-mono text-[13px]">
@@ -3692,10 +3786,12 @@ function Activations({ activations, newSubmissions }: { activations: Activation[
 
 function ActivationLineageModal({ lineage, onClose }: { lineage: ActivationLineage; onClose: () => void }) {
   const primaryEntityTypes = ["activation", "activation_export", "creative_variant", "creative", "generation_request", "brief"];
-  const primarySteps = lineage.steps.filter((step) => primaryEntityTypes.includes(step.entity_type));
+  const primaryStepsRaw = lineage.steps.filter((step) => primaryEntityTypes.includes(step.entity_type));
+  const entityOrder = ["brief", "generation_request", "creative", "creative_variant", "activation_export", "activation"];
+  const primarySteps = [...primaryStepsRaw].sort((a, b) => entityOrder.indexOf(a.entity_type) - entityOrder.indexOf(b.entity_type));
   const supportSteps = lineage.steps.filter((step) => !primaryEntityTypes.includes(step.entity_type));
   const policyIssues = lineage.policy_checks.filter((check) => check.check_status.toLowerCase() !== "pass" || check.review_required);
-  const hasAssetPreviews = lineage.source_preview_uri || lineage.final_preview_uri;
+  const hasAssetPreviews = lineage.source_preview_uri || lineage.source_video_preview_uri || lineage.final_preview_uri;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071523]/82 p-4">
       <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close activation lineage" />
@@ -3704,7 +3800,7 @@ function ActivationLineageModal({ lineage, onClose }: { lineage: ActivationLinea
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Activation lineage</p>
             <h2 className="truncate text-[18px] font-bold text-[var(--ink)]">
-              {lineage.activation?.destination_platform ?? "Activation"} back to {lineage.brief?.brief_name ?? "original brief"}
+              {lineage.brief?.brief_name ?? "Brief"} → {lineage.activation?.destination_platform ?? "Activation"}
             </h2>
           </div>
           <button
@@ -3722,10 +3818,14 @@ function ActivationLineageModal({ lineage, onClose }: { lineage: ActivationLinea
             <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--panel-soft)]/50 p-4">
               <p className="text-[11px] font-bold uppercase text-[var(--faint)]">Asset Provenance</p>
               <div className="mt-3 grid gap-4 md:grid-cols-2">
-                {lineage.source_preview_uri ? (
+                {lineage.source_preview_uri || lineage.source_video_preview_uri ? (
                   <div className="rounded-lg border border-[var(--line)] bg-white p-3">
                     <p className="text-[10px] font-bold uppercase text-[var(--faint)]">Source Asset</p>
-                    <img src={lineage.source_preview_uri} alt="Source asset" className="mt-2 h-32 w-full rounded-md bg-[var(--panel-soft)] object-contain" />
+                    {lineage.source_video_preview_uri ? (
+                      <video src={lineage.source_video_preview_uri} controls className="mt-2 h-32 w-full rounded-md bg-[var(--panel-soft)] object-contain" />
+                    ) : (
+                      <img src={lineage.source_preview_uri} alt="Source asset" className="mt-2 h-32 w-full rounded-md bg-[var(--panel-soft)] object-contain" />
+                    )}
                     {lineage.reference_asset ? (
                       <p className="mt-2 text-[12px] font-semibold text-[var(--ink)]">{lineage.reference_asset.asset_name}</p>
                     ) : null}
@@ -3816,19 +3916,19 @@ function ActivationLineageModal({ lineage, onClose }: { lineage: ActivationLinea
               <p className="text-[13px] font-bold text-[var(--ink)]">Original brief trace</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {[...primarySteps, ...supportSteps].map((step) => (
-                  <div key={`detail-${step.entity_type}-${step.entity_id}`} className="rounded-md border border-[var(--line)] bg-[var(--panel-soft)]/55 p-3">
+                  <div key={`detail-${step.entity_type}-${step.entity_id}`} className="overflow-hidden rounded-md border border-[var(--line)] bg-[var(--panel-soft)]/55 p-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-[11px] font-bold uppercase text-[var(--faint)]">{labelize(step.entity_type)}</p>
-                        <p className="mt-1 text-[13px] font-bold text-[var(--ink)]">{step.title}</p>
+                        <p className="mt-1 truncate text-[13px] font-bold text-[var(--ink)]" title={step.title}>{step.title}</p>
                       </div>
                       {step.status ? <StatusPill value={step.status} /> : null}
                     </div>
-                    <div className="mt-2 grid gap-1">
+                    <div className="mt-2 grid gap-1.5 overflow-hidden">
                       {Object.entries(step.metadata).slice(0, 5).map(([key, value]) => (
-                        <div key={key} className="flex justify-between gap-3 text-[11px]">
-                          <span className="text-[var(--faint)]">{key}</span>
-                          <span className="max-w-[62%] truncate text-right font-mono text-[var(--muted)]">{value}</span>
+                        <div key={key} className="flex items-baseline justify-between gap-2 text-[11px]">
+                          <span className="shrink-0 text-[var(--faint)]">{key}</span>
+                          <span className="truncate text-right font-mono text-[var(--muted)]" title={String(value)}>{value}</span>
                         </div>
                       ))}
                     </div>
@@ -4138,11 +4238,12 @@ function TalkTrack({ data }: { data: AgencyData }) {
     {
       tab: "Creative Studio",
       icon: Palette,
-      story: "Creative Studio is the core demo: category-based governed seed-image retrieval, RAG-backed variant generation, full-image preview, adaptation, and approval.",
+      story: "Creative Studio is the core demo: category-based governed seed-asset retrieval (images + videos), RAG-backed variant generation with visual treatments, full preview, adaptation, and approval.",
       graphs: [
-        `Generate 4 Variants uses Vector Search and the configured creative endpoint metadata, currently ${creativeEndpoint}.`,
-        `Image model/source is labeled separately as ${imageModel}; seed thumbnails come from the UC Volume manifest by selected category.`,
-        "Generated variant thumbnails embed the seed image reference and can be opened into a full preview modal.",
+        `Generate Variants uses Vector Search and the configured creative endpoint metadata, currently ${creativeEndpoint}.`,
+        `Image/video model source is labeled as ${imageModel}; seed assets come from UC Volume by category (seed_images/ and video_seeds/).`,
+        "Generated video variants apply distinct visual treatments (Stadium glow, Cinema warmth, Premium focus, Value signal, Event return) with CSS filters and brand color overlays.",
+        "Each variant shows its treatment name badge and accent color to visually differentiate variants from the same source video.",
         "Approved base assets are governed source assets with rights metadata, prior performance, related app asset IDs, and usage contexts.",
         "Create Adaptation tracks resize, crop, inpaint, outpaint, cleanup, background extension, safe-area, and aspect-ratio conversion.",
         "Approve appears on Pending_Review cards here because Evaluation only shows approved creatives.",
@@ -4157,6 +4258,8 @@ function TalkTrack({ data }: { data: AgencyData }) {
       graphs: [
         `Policy checks use ${policyEndpoint} metadata for brand, rights, regional usage, and safety review.`,
         `Synthetic audience judging uses ${judgeEndpoint} metadata for click propensity, dwell time, relevance, clarity, fatigue risk, and brand fit.`,
+        "Search box filters approved creatives by name, brief, audience, or placement for quick lookup.",
+        "Brief/Audience column shows which campaign brief and target segment each approved creative is linked to.",
         "Approved Scored is intentionally filtered to approved variants so reviewers control what can advance.",
         "Activate is the user-facing action that submits selected approved winners into the Activation dashboard, with optional multi-channel submission.",
       ],
@@ -4171,22 +4274,11 @@ function TalkTrack({ data }: { data: AgencyData }) {
         "Spend by platform shows where delivery is live and where budget is concentrated.",
         "New submissions show what was just activated from Evaluation before delivery metrics exist, and app state persists when Lakebase is available.",
         "The live delivery table connects campaign IDs to platform status and response metrics.",
+        "Trace Lineage shows the full provenance from Brief → Generation Request → Creative → Activation in forward order.",
         "Use this page to explain the production destination pattern: Meta, Google Ads, DV360, Adobe Target, email, AEM, Target, CMS, DAM, or onsite personalization.",
       ],
-      transition: "Move to Markets to show how the same intelligence can guide regional scaling after activation.",
-      tone: "#1f9d72",
-    },
-    {
-      tab: "Markets",
-      icon: MapPinned,
-      story: "Markets are the optimization lens after activation: where to scale, optimize, or test based on response and audience mix.",
-      graphs: [
-        "The map turns performance data into a regional planning surface.",
-        "Regional drilldowns explain where the creative-audience combination is working.",
-        "This page supports the continuous improvement story: real-world outcomes feed future prompts, segments, and retrieval patterns.",
-      ],
       transition: "Use Ask AI for follow-up questions or the Architecture menu to explain the implementation.",
-      tone: "#c7793a",
+      tone: "#1f9d72",
     },
     {
       tab: "Ask AI",
@@ -5378,14 +5470,15 @@ function ArchitectureCard({
 
   return (
     <motion.div
-      className={`architecture-card flex min-h-[72px] flex-col justify-center rounded-lg border px-3 py-2 text-center ${toneClass}`}
+      className={`architecture-card flex min-h-[72px] flex-col justify-center overflow-hidden rounded-lg border px-3 py-2 text-center ${toneClass}`}
       initial={{ opacity: 0, y: 10, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       whileHover={{ y: -2 }}
       transition={{ duration: 0.28, delay }}
+      title={title}
     >
-      <p className="text-[12px] font-bold leading-4">{title}</p>
-      <p className="mt-1 font-mono text-[10px] leading-4 text-[var(--muted)]">{subtitle}</p>
+      <p className="truncate text-[12px] font-bold leading-4">{title}</p>
+      <p className="mt-1 truncate font-mono text-[10px] leading-4 text-[var(--muted)]">{subtitle}</p>
     </motion.div>
   );
 }
