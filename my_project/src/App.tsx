@@ -6,7 +6,10 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   CircleDollarSign,
   FileText,
   Filter,
@@ -1796,7 +1799,11 @@ function JourneyExperience({ view, onNavigate }: { view: View; onNavigate: (view
 function Overview({ data }: { data: AgencyData }) {
   const { dashboard } = data;
   const [pacingWindow, setPacingWindow] = useState<PacingWindow>(7);
-  const pacingTrend = useMemo(() => dashboard.trend.slice(-pacingWindow), [dashboard.trend, pacingWindow]);
+  const pacingTrend = useMemo(() => {
+    const trendData = dashboard.trend || [];
+    if (trendData.length <= pacingWindow) return trendData;
+    return trendData.slice(-pacingWindow);
+  }, [dashboard.trend, pacingWindow]);
   const qualityAvg = Math.round(dashboard.quality_radar.reduce((sum, item) => sum + item.score, 0) / dashboard.quality_radar.length);
 
   return (
@@ -1834,7 +1841,7 @@ function Overview({ data }: { data: AgencyData }) {
           />
           <div className="h-[360px] p-4">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={pacingTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+              <LineChart key={`trend-${pacingWindow}`} data={pacingTrend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="#e6ebf1" vertical={false} />
                 <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#626a78" }} />
                 <YAxis
@@ -3088,6 +3095,8 @@ function Evaluation({
   const [scoreExplanation, setScoreExplanation] = useState<ScoreExplanation | null>(null);
   const [scoreExplanationLoading, setScoreExplanationLoading] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
   const approvedVariantIds = new Set(
     data.creativeVariants
       .filter((variant) => variant.approval_status === "Approved")
@@ -3113,7 +3122,8 @@ function Evaluation({
         );
       })
     : ranked;
-  const topRows = filteredRanked;
+  const totalPages = Math.ceil(filteredRanked.length / pageSize);
+  const topRows = filteredRanked.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const readyActivationIds = new Set(data.activationExports.map((exportRecord) => exportRecord.export_id));
   data.activations
     .filter((activation) => activation.activation_source === "live_submission")
@@ -3223,7 +3233,7 @@ function Evaluation({
                 type="text"
                 placeholder="Search creatives, briefs, audiences..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                 className="w-64 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] text-[var(--ink)] placeholder:text-[var(--faint)]"
               />
               <label className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-[12px] font-bold text-[var(--ink)]">
@@ -3363,6 +3373,54 @@ function Evaluation({
             </tbody>
           </table>
         </div>
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between border-t border-[var(--line)] px-4 py-3">
+            <p className="text-[12px] text-[var(--muted)]">
+              Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredRanked.length)} of {filteredRanked.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="inline-flex h-8 w-8 items-center justify-center rounded border border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)] disabled:opacity-40"
+                title="First page"
+              >
+                <ChevronsLeft size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="inline-flex h-8 w-8 items-center justify-center rounded border border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)] disabled:opacity-40"
+                title="Previous page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="px-3 text-[12px] font-semibold text-[var(--ink)]">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="inline-flex h-8 w-8 items-center justify-center rounded border border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)] disabled:opacity-40"
+                title="Next page"
+              >
+                <ChevronRight size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="inline-flex h-8 w-8 items-center justify-center rounded border border-[var(--line)] bg-white text-[var(--muted)] hover:bg-[var(--panel-soft)] disabled:opacity-40"
+                title="Last page"
+              >
+                <ChevronsRight size={14} />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </Panel>
       {scoreExplanation ? <ScoreExplanationModal explanation={scoreExplanation} onClose={() => setScoreExplanation(null)} /> : null}
     </div>
