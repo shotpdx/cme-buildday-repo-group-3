@@ -1,0 +1,33 @@
+resources:
+  pipelines:
+    csv_bronze_pipeline:
+      name: "[${bundle.target}] CSV to Bronze/Silver/Gold Pipeline"
+
+      # Target catalog and schema for output tables
+      catalog: ${var.catalog}
+      target: media_demo
+
+      # Pipeline source code
+      libraries:
+        - notebook:
+            path: ../pipelines/csv_to_bronze.py
+
+      root_path: ../
+
+      serverless: true
+
+      # Pipeline configuration
+      configuration:
+        catalog: ${var.catalog}
+        schema: media_demo
+        seed_volume_path: "/Volumes/${var.catalog}/${var.schema}/seed_data"
+
+      continuous: false
+      development: true
+      photon: true
+
+      channel: current
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: "users"
