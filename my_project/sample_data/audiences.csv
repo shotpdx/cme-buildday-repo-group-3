@@ -1,4 +1,4 @@
-cohort_id,cohort_name,cohort_description,definition_type,personalization_granularity,estimated_reach,is_region_allowed,is_channel_allowed,is_frequency_capped,status,last_updated_ts,match_rate,avg_ltv
+cohort_id,cohort_name,cohort_description,definition_type,personalization_granularity,reach,is_region_allowed,is_channel_allowed,is_frequency_capped,status,last_updated_ts,match_rate,avg_ltv
 COH-001,Live Sports Loyalists,Heavy live-game viewers with high retention value,ml_model,Micro_Cohort,285000,true,true,true,Active,2026-05-10,0.91,720
 COH-002,Churn Risk: Sports,Subscribers with sports affinity and falling engagement,ml_model,One_to_One,142000,true,true,true,Active,2026-05-09,0.87,510
 COH-003,Family Co-Viewing,Households with consistent weekend family content sessions,rule_based,Segment,198000,true,true,false,Active,2026-05-08,0.82,440

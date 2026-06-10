@@ -14,21 +14,21 @@ variables:
     default: creative-command-center-dev
   creative_workflow_genie_space_id:
     description: Genie Space ID used by Ask AI for the Creative Command Center workflow.
-    default: 01f15b4630bf18b483ee25bb3e20bd3d
+    default: 01f1647c7fdd1fa6b6a9751077c50d1d
   creative_workflow_sql_warehouse_id:
     description: SQL warehouse used by the app and Genie Space.
-    default: d24059778e957e41
+    default: efc19ff6b96391d7
 
 targets:
   dev:
     default: true
     variables:
       app_name: creative-command-center-dev
-      creative_workflow_genie_space_id: 01f15b4630bf18b483ee25bb3e20bd3d
-      creative_workflow_sql_warehouse_id: d24059778e957e41
+      creative_workflow_genie_space_id: 01f1647c7fdd1fa6b6a9751077c50d1d
+      creative_workflow_sql_warehouse_id: efc19ff6b96391d7
   prod:
     mode: production
     variables:
       app_name: creative-command-center
-      creative_workflow_genie_space_id: 01f15b4630bf18b483ee25bb3e20bd3d
-      creative_workflow_sql_warehouse_id: d24059778e957e41
+      creative_workflow_genie_space_id: 01f1647c7fdd1fa6b6a9751077c50d1d
+      creative_workflow_sql_warehouse_id: efc19ff6b96391d7

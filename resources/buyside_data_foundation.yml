@@ -7,13 +7,21 @@ resources:
       catalog: ${var.catalog}
       target: ${var.schema}
       
-      # Pipeline libraries - includes all 5 pipeline notebooks
+      # Pipeline libraries - only downstream pipelines (csv_to_bronze runs separately)
       libraries:
-        - glob:
-            include: ../pipelines/**
+        - file:
+            path: ../pipelines/ab_test_tables.py
+        - file:
+            path: ../pipelines/audience_cohort_reference.py
+        - file:
+            path: ../pipelines/campaign_activation.py
+        - file:
+            path: ../pipelines/generated_creative_assets.py
+        - file:
+            path: ../pipelines/identity_graph.py
       
       root_path: ../
-      
+
       serverless: true
       
       # Pipeline configuration - pass source catalog/schema for reading existing tables

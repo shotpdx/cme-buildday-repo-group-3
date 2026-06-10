@@ -19,17 +19,17 @@ env:
   - name: SOURCE_CATALOG
     value: cme_outcomes_uswest
   - name: SOURCE_SCHEMA
-    value: lakefoundry
+    value: media_demo
   - name: CREATIVE_GENERATION_MODE
     value: model_endpoint
   - name: CREATIVE_MODEL_ENDPOINT
-    value: databricks-gpt-5-mini
+    value: databricks-gpt-5-5
   - name: CREATIVE_IMAGE_MODEL
     value: seeded synthetic image assets
   - name: CREATIVE_POLICY_MODEL_ENDPOINT
-    value: databricks-gpt-5-mini
+    value: databricks-gpt-5-5
   - name: CREATIVE_JUDGE_MODEL_ENDPOINT
-    value: databricks-gpt-5-mini
+    value: databricks-gpt-5-5
   - name: CREATIVE_ASSET_VOLUME
     value: artifacts
   - name: CREATIVE_ASSET_PREFIX
@@ -55,8 +55,8 @@ env:
   - name: ACTIVATION_DESTINATION_SYSTEM
     value: onsite_personalization
   - name: ASK_AI_BACKEND
-    value: fallback
+    value: genie
   - name: GENIE_SPACE_ID
-    value: 01f15b4630bf18b483ee25bb3e20bd3d
+    value: 01f1647c7fdd1fa6b6a9751077c50d1d
   - name: GENIE_TIMEOUT_SECONDS
     value: "120"

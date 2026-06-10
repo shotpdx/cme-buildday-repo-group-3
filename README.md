@@ -41,8 +41,10 @@ cd cme-buildday-repo-group-3
 cp .env.example .env  # Edit with your workspace details
 
 # Run the full deployment script
-python scripts/full_deployment.py
+python3 scripts/full_deployment.py
 ```
+
+> **Important:** After the Genie Space is created, update `my_project/databricks.yml` with the new Genie Space ID and SQL Warehouse ID before deploying the app. See [Workspace-Specific Configuration](#workspace-specific-configuration) below.
 
 This single command will:
 1. Create Unity Catalog resources (catalog, schemas, volumes)
@@ -107,6 +109,71 @@ python scripts/full_deployment.py --pipelines-only
 # App only (assumes pipelines already ran)
 python scripts/full_deployment.py --app-only
 ```
+
+---
+
+## Workspace-Specific Configuration
+
+When deploying to a **new workspace**, you must update the following IDs after running the initial setup:
+
+### 1. SQL Warehouse ID
+
+Find your SQL Warehouse ID in the Databricks UI:
+- Go to **SQL** → **SQL Warehouses**
+- Click on your warehouse
+- Copy the ID from the URL or warehouse details page
+
+Update in **two places**:
+
+**`.env`** (for deployment scripts):
+```bash
+DATABRICKS_WAREHOUSE_ID=<your-warehouse-id>
+```
+
+**`my_project/databricks.yml`** (for the app):
+```yaml
+variables:
+  creative_workflow_sql_warehouse_id:
+    default: <your-warehouse-id>
+
+targets:
+  dev:
+    variables:
+      creative_workflow_sql_warehouse_id: <your-warehouse-id>
+```
+
+### 2. Genie Space ID
+
+After running `python3 scripts/setup_creative_genie_space.py`, the script outputs a JSON with the `space_id`:
+
+```json
+{
+  "space_id": "01f1647c7fdd1fa6b6a9751077c50d1d",
+  ...
+}
+```
+
+Update in **`my_project/databricks.yml`**:
+```yaml
+variables:
+  creative_workflow_genie_space_id:
+    default: <your-genie-space-id>
+
+targets:
+  dev:
+    variables:
+      creative_workflow_genie_space_id: <your-genie-space-id>
+```
+
+### 3. Complete Checklist for New Workspace Deployment
+
+1. ☐ Update `.env` with new `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_WAREHOUSE_ID`
+2. ☐ Run `python3 scripts/full_deployment.py --skip-app` (runs pipelines and creates Genie Space)
+3. ☐ Note the Genie Space ID from the output
+4. ☐ Update `my_project/databricks.yml` with:
+   - `creative_workflow_sql_warehouse_id` (from step 1)
+   - `creative_workflow_genie_space_id` (from step 3)
+5. ☐ Deploy the app: `cd my_project && databricks bundle deploy -t dev`
 
 ---
 
@@ -354,8 +421,43 @@ cme-buildday-repo-group-3/
 
 ## Troubleshooting
 
+### App deploy fails with "Invalid SQL warehouse resource"
+- The SQL Warehouse ID in `my_project/databricks.yml` doesn't exist in your workspace
+- Update `creative_workflow_sql_warehouse_id` with your workspace's SQL Warehouse ID
+- See [Workspace-Specific Configuration](#workspace-specific-configuration)
+
+### Pipeline fails with "table already managed by another pipeline"
+- Tables in Unity Catalog can only be owned by one pipeline at a time
+- Drop the existing tables before running the new pipeline:
+  ```sql
+  DROP TABLE IF EXISTS cme_outcomes_uswest.media_demo.gold_media_creative_briefs;
+  -- Drop other conflicting tables as needed
+  ```
+- Or delete the old pipeline from the Databricks UI to release table ownership
+
+### Pipeline fails with "workspace_id mismatch"
+- Bundle was previously deployed to a different workspace
+- Remove the local Terraform state and redeploy:
+  ```bash
+  rm -rf .databricks
+  databricks bundle deploy -t dev --force-lock
+  ```
+
+### Pipeline fails with "Unity Catalog credential scope missing"
+- Serverless pipelines may have network/credential issues in some workspaces
+- Try switching to a classic cluster by updating the pipeline YAML:
+  ```yaml
+  serverless: false
+  clusters:
+    - label: default
+      autoscale:
+        min_workers: 1
+        max_workers: 4
+  ```
+
 ### Pipeline fails with "table not found"
 - Ensure source tables exist in `cme_outcomes_uswest.media_demo`
+- Run the `source_tables_bootstrap` pipeline first if upstream tables are missing
 - Check catalog/schema grants: `GRANT USE CATALOG ON CATALOG cme_outcomes_uswest TO <principal>`
 
 ### App shows CSV fallback data
@@ -371,7 +473,8 @@ cme-buildday-repo-group-3/
 - Check app has `READ_VOLUME` permission in `resources/creative_command_center.app.yml`
 
 ### Genie/Ask AI not working
-- Verify `GENIE_SPACE_ID` is set correctly
+- Verify `GENIE_SPACE_ID` is set correctly in `my_project/databricks.yml`
+- Ensure the Genie Space ID matches what was created in your workspace
 - Check Genie Space has table access
 - Fallback mode uses table summaries if Genie is unavailable
 

@@ -2770,7 +2770,7 @@ def _parse_audience(row: dict[str, str]) -> dict[str, Any]:
         "cohort_description": row["cohort_description"],
         "definition_type": row["definition_type"],
         "personalization_granularity": row["personalization_granularity"],
-        "estimated_reach": _as_int(row["estimated_reach"]),
+        "estimated_reach": _as_int(row.get("estimated_reach") or row.get("reach", "0")),
         "is_region_allowed": _as_bool(row["is_region_allowed"]),
         "is_channel_allowed": _as_bool(row["is_channel_allowed"]),
         "is_frequency_capped": _as_bool(row["is_frequency_capped"]),

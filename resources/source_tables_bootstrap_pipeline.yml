@@ -1,16 +1,16 @@
 resources:
   pipelines:
-    csv_bronze_pipeline:
-      name: "[${bundle.target}] CSV to Bronze/Silver/Gold Pipeline"
+    source_tables_bootstrap:
+      name: "[${bundle.target}] Source Tables Bootstrap"
 
       # Target catalog and schema for output tables
       catalog: ${var.catalog}
       target: media_demo
 
-      # Pipeline source code - use file instead of notebook
+      # Pipeline source code
       libraries:
         - file:
-            path: ../pipelines/csv_to_bronze.py
+            path: ../pipelines/source_tables_bootstrap.py
 
       root_path: ../
 
@@ -20,7 +20,6 @@ resources:
       configuration:
         catalog: ${var.catalog}
         schema: media_demo
-        seed_volume_path: "/Volumes/${var.catalog}/${var.schema}/seed_data"
 
       continuous: false
       development: true
