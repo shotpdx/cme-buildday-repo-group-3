@@ -1,0 +1,32 @@
+resources:
+  pipelines:
+    buyside_data_foundation:
+      name: "[${bundle.target}] Buyside Data Foundation Pipeline"
+      
+      # Target catalog and schema
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      
+      # Pipeline libraries - includes all 5 pipeline notebooks
+      libraries:
+        - glob:
+            include: ../pipelines/**
+      
+      root_path: ../
+      
+      serverless: true
+      
+      # Pipeline configuration - pass source catalog/schema for reading existing tables
+      configuration:
+        source_catalog: ${var.source_catalog}
+        source_schema: ${var.source_schema}
+      
+      continuous: false
+      development: true
+      photon: true
+      
+      channel: current
+      
+      permissions:
+        - level: CAN_VIEW
+          group_name: "users"

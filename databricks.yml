@@ -1,0 +1,25 @@
+bundle:
+  name: personalized-creative-activation-mvp
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    default: "cme_outcomes_uswest"
+  schema:
+    default: "lakefoundry"
+  source_catalog:
+    default: "cme_outcomes_uswest"
+  source_schema:
+    default: "media_demo"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    variables:
+      catalog: "cme_outcomes_uswest"
+      schema: "lakefoundry"
+      source_catalog: "cme_outcomes_uswest"
+      source_schema: "media_demo"

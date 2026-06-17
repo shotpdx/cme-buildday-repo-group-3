@@ -1,0 +1,96 @@
+# Genie Space Configuration for Buyside Creative Activation
+# 
+# Databricks Genie Spaces are created via the Databricks API or UI.
+# This file documents the configuration for the Buyside Creative Activation Genie Space.
+#
+# To create this Genie Space:
+# 1. Navigate to Databricks Workspace > SQL > Genie Spaces
+# 2. Click "Create Genie Space"
+# 3. Use the configuration below
+#
+# Or use the Databricks SDK:
+# from databricks.sdk import WorkspaceClient
+# w = WorkspaceClient()
+# w.genie.create(
+#     display_name="Buyside Creative Activation",
+#     table_identifiers=[...],  # See list below
+#     description="...",
+#     sample_questions=[...]
+# )
+
+# Configuration Reference:
+# 
+# Display Name: Buyside Creative Activation
+# 
+# Description: Explore creative activation data for personalized marketing campaigns. 
+# This Genie Space connects buyside creative management tables with media planning and 
+# customer data to enable natural language exploration.
+#
+# Tables Included (12 total):
+# 
+# Buyside Tables (Lakefoundry):
+#   - gold_buyside_identity_graph: Customer identity resolution with linked IDs
+#   - gold_buyside_audience_cohort: Audience segments with personalization rules
+#   - gold_buyside_generated_creatives: AI-generated creative assets
+#   - gold_buyside_campaign_activation: Creative trafficking with performance metrics
+#   - gold_buyside_ab_test_config: A/B test configurations
+#   - gold_buyside_ab_test_variant: A/B test variants with results
+#
+# Media Planning Tables (Media Demo):
+#   - gold_media_customer_360: Customer profiles with engagement history
+#   - gold_media_audience_segments: Behavioral and demographic segmentation
+#   - gold_media_creative_briefs: Campaign briefs with objectives and KPI targets
+#   - gold_media_creative_concepts: Narrative concepts with tone and visual treatment
+#   - gold_media_brand_asset_library: Approved brand assets and templates
+#   - gold_media_media_plan_line_items: DSP placements with format specs and targeting
+#
+# Sample Questions (24 total):
+#
+# Creative Performance Analysis:
+#   - "What is the average CTR and conversion rate by audience cohort?"
+#   - "Which generated creatives have the highest approval rate?"
+#   - "Show me creative asset performance by format and aspect ratio"
+#   - "What is the cost per conversion by creative asset?"
+#
+# A/B Test Analysis:
+#   - "Which A/B test variants are winners with the highest metric values?"
+#   - "What is the performance difference between canary and full traffic variants?"
+#   - "Show me all active A/B tests and their current status"
+#   - "Which test has the highest conversion rate improvement?"
+#
+# Campaign Activation & Trafficking:
+#   - "What is the activation status of creatives across different platforms?"
+#   - "Show me campaign activations by destination platform with performance metrics"
+#   - "How many impressions and clicks has each creative received?"
+#   - "What is the total cost and ROI by campaign?"
+#
+# Identity Graph & Audience Analysis:
+#   - "What is the identity resolution confidence distribution?"
+#   - "How many customers are in each audience cohort?"
+#   - "Show me cohorts with the highest estimated reach"
+#   - "Which cohorts have frequency capping enabled?"
+#
+# Creative & Brief Alignment:
+#   - "What creatives are assigned to each audience segment?"
+#   - "Show me brief objectives and their associated creative concepts"
+#   - "Which concepts have the highest alignment score with their brief?"
+#   - "What are the message pillars for each active campaign?"
+#
+# Media Planning Integration:
+#   - "What is the budget allocation by DSP platform and placement format?"
+#   - "Show me line items with personalization at the one-to-one granularity"
+#   - "Which line items have the highest frequency caps?"
+#   - "What is the geographic targeting coverage by campaign?"
+#
+# Customer Insights:
+#   - "Show me customer profiles by persona and engagement level"
+#   - "Which customers are in high-value segments and have high churn risk?"
+#   - "What is the average customer lifetime value by subscription tier?"
+#   - "How many multi-platform customers are there in each segment?"
+#
+# Implementation:
+# This Genie Space should be created using the create_or_update_genie tool with:
+#   - display_name: "Buyside Creative Activation"
+#   - table_identifiers: [list of 12 tables above]
+#   - description: [comprehensive description of tables and use cases]
+#   - sample_questions: [list of 24 questions above]
