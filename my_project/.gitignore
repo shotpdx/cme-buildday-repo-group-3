@@ -1,9 +1,14 @@
 .databricks/
 build/
 dist/
+!dist/
+!dist/**
 __pycache__/
 *.egg-info
 .venv/
+node_modules/
+.next/
+mockups/
 scratch/**
 !scratch/README.md
 **/explorations/**

@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+large_tool_results/
 *.py[codz]
 *$py.class
 
@@ -11,6 +12,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+!my_project/dist/
+!my_project/dist/**
 downloads/
 eggs/
 .eggs/
@@ -207,8 +210,12 @@ out/
 # Local browser verification artifacts
 .playwright-mcp/
 local-app-home.png
+
+# Generated creative image seed packs live in UC Volumes.
+my_project/creative_demo_assets/
 .cursorignore
 .cursorindexingignore
+.claude/
 
 # Marimo
 marimo/_static/

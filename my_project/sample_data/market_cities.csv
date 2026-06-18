@@ -1,0 +1,21 @@
+region_id,name,state,reach,ctr,lift
+west,Los Angeles,CA,128000,1.42,21
+west,San Francisco,CA,94000,1.37,17
+west,Seattle,WA,76000,1.24,14
+west,Phoenix,AZ,58000,1.16,12
+central,Dallas,TX,103000,1.14,14
+central,Houston,TX,91000,1.06,12
+central,Denver,CO,72000,1.01,9
+central,Kansas City,MO,47000,0.95,8
+midwest,Chicago,IL,112000,1.02,11
+midwest,Detroit,MI,64000,0.94,8
+midwest,Minneapolis,MN,52000,0.91,7
+midwest,Cleveland,OH,39000,0.88,6
+southeast,Atlanta,GA,96000,1.26,17
+southeast,Miami,FL,85000,1.18,14
+southeast,Charlotte,NC,61000,1.09,12
+southeast,Nashville,TN,43000,1.02,10
+northeast,New York,NY,142000,1.17,15
+northeast,Boston,MA,68000,1.12,13
+northeast,Philadelphia,PA,59000,1.03,10
+northeast,Washington,DC,53000,1.08,12

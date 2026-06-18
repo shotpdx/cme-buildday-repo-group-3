@@ -13,6 +13,22 @@ variables:
     default: "cme_outcomes_uswest"
   source_schema:
     default: "media_demo"
+  creative_asset_volume:
+    default: "artifacts"
+  creative_vector_search_endpoint:
+    default: "creative-asset-search-dev"
+  creative_vector_search_index:
+    default: "cme_outcomes_uswest.lakefoundry.creative_asset_search_index"
+  creative_generation_mode:
+    default: "model_endpoint"
+  creative_model_endpoint:
+    default: "databricks-gpt-5-mini"
+  creative_policy_model_endpoint:
+    default: "databricks-gpt-5-mini"
+  creative_judge_model_endpoint:
+    default: "databricks-gpt-5-mini"
+  activation_destination_system:
+    default: "onsite_personalization"
 
 targets:
   dev:
@@ -23,3 +39,11 @@ targets:
       schema: "lakefoundry"
       source_catalog: "cme_outcomes_uswest"
       source_schema: "media_demo"
+      creative_asset_volume: "artifacts"
+      creative_vector_search_endpoint: "creative-asset-search-dev"
+      creative_vector_search_index: "cme_outcomes_uswest.lakefoundry.creative_asset_search_index"
+      creative_generation_mode: "model_endpoint"
+      creative_model_endpoint: "databricks-gpt-5-mini"
+      creative_policy_model_endpoint: "databricks-gpt-5-mini"
+      creative_judge_model_endpoint: "databricks-gpt-5-mini"
+      activation_destination_system: "onsite_personalization"

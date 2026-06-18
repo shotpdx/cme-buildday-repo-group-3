@@ -1,0 +1,18 @@
+resources:
+  apps:
+    creative_command_center:
+      name: ${var.app_name}
+      description: Creative Command Center demo with a Databricks SQL pipeline backend, CSV fallback, and React frontend.
+      source_code_path: ..
+      resources:
+        - name: creative-workflow-sql-wh
+          description: SQL warehouse used by the app backend.
+          sql_warehouse:
+            id: ${var.creative_workflow_sql_warehouse_id}
+            permission: CAN_USE
+        - name: creative-assets-volume
+          description: UC volume containing seeded and generated creative image assets.
+          uc_securable:
+            securable_type: VOLUME
+            securable_full_name: cme_outcomes_uswest.lakefoundry.artifacts
+            permission: READ_VOLUME

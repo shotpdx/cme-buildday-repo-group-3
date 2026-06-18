@@ -1,0 +1,62 @@
+command:
+  - python
+  - -m
+  - app.main
+
+env:
+  - name: SAMPLE_DATA_DIR
+    value: sample_data
+  - name: APP_DATA_SOURCE
+    value: databricks
+  - name: APP_STATE_BACKEND
+    value: memory
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: creative-workflow-sql-wh
+  - name: PIPELINE_CATALOG
+    value: cme_outcomes_uswest
+  - name: PIPELINE_SCHEMA
+    value: lakefoundry
+  - name: SOURCE_CATALOG
+    value: cme_outcomes_uswest
+  - name: SOURCE_SCHEMA
+    value: media_demo
+  - name: CREATIVE_GENERATION_MODE
+    value: model_endpoint
+  - name: CREATIVE_MODEL_ENDPOINT
+    value: databricks-gpt-5-5
+  - name: CREATIVE_IMAGE_MODEL
+    value: seeded synthetic image assets
+  - name: CREATIVE_POLICY_MODEL_ENDPOINT
+    value: databricks-gpt-5-5
+  - name: CREATIVE_JUDGE_MODEL_ENDPOINT
+    value: databricks-gpt-5-5
+  - name: CREATIVE_ASSET_VOLUME
+    value: artifacts
+  - name: CREATIVE_ASSET_PREFIX
+    value: creative_assets
+  - name: CREATIVE_APPROVED_ASSET_PREFIX
+    value: approved
+  - name: UC_EXTERNAL_LINEAGE_ENABLED
+    value: "false"
+  - name: UC_EXTERNAL_LINEAGE_SYSTEM_TYPE
+    value: DATABRICKS
+  - name: UC_EXTERNAL_LINEAGE_ENTITY_TYPE
+    value: CreativeGenerationJob
+  - name: UC_EXTERNAL_LINEAGE_TARGET_TABLE
+    value: gold_buyside_creative_variant
+  - name: CREATIVE_SEED_IMAGE_PATH
+    value: /Volumes/cme_outcomes_uswest/lakefoundry/artifacts/creative_assets/seed_images
+  - name: CREATIVE_VIDEO_SEED_PATH
+    value: /Volumes/cme_outcomes_uswest/lakefoundry/artifacts/creative_assets/video_seeds
+  - name: CREATIVE_VECTOR_SEARCH_ENDPOINT
+    value: creative-asset-search-dev
+  - name: CREATIVE_VECTOR_SEARCH_INDEX
+    value: cme_outcomes_uswest.lakefoundry.creative_asset_search_index
+  - name: ACTIVATION_DESTINATION_SYSTEM
+    value: onsite_personalization
+  - name: ASK_AI_BACKEND
+    value: genie
+  - name: GENIE_SPACE_ID
+    value: 01f1647c7fdd1fa6b6a9751077c50d1d
+  - name: GENIE_TIMEOUT_SECONDS
+    value: "120"

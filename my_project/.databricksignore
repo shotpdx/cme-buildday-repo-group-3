@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.databricks/
+.venv/
+build/
+__pycache__/
+*.egg-info/
+*.pyc
+.pytest_cache/
+fixtures/
+mockups/
+resources/
+src/
+tests/
+.vscode/

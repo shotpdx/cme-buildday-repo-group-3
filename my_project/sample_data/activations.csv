@@ -1,0 +1,5 @@
+activation_id,creative_asset_id,campaign_id,destination_platform,trafficking_status,impressions,clicks,conversions,cost,ab_test_id,last_sync_ts
+ACT-001,CAD-001,CAMP-1001,The Trade Desk,Live,380000,4864,681,68400,AB-100,2026-05-12 09:40
+ACT-002,CAD-002,CAMP-1001,Meta,Live,425000,4420,530,51200,AB-100,2026-05-12 09:35
+ACT-003,CAD-003,CAMP-1002,DV360,Submitted,214000,1755,246,29750,,2026-05-12 08:20
+ACT-004,CAD-004,CAMP-1003,Google Ads,Draft,0,0,0,0,AB-101,2026-05-11 17:05

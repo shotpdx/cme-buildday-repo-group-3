@@ -1,0 +1,5 @@
+creative_asset_id,asset_name,asset_type,format,width_px,height_px,approval_status,target_segment,content_tags,generation_model,created_at,quality_score,predicted_ctr
+CAD-001,Championship Night Hero,Image,JPG,1280,628,Approved,Live Sports Loyalists,sports;hero;premium,Ideogram 2.0,2026-05-09,94,1.28
+CAD-002,Final Whistle Story,Video,MP4,1080,1920,Approved,Churn Risk: Sports,story;winback;sports,Runway Gen-3,2026-05-08,91,1.04
+CAD-003,Family Slate DCO,DCO,HTML,1200,628,Pending_Review,Family Co-Viewing,dco;family;weekend,Celtra DCO,2026-05-07,88,0.82
+CAD-004,Annual Upgrade Leaderboard,Image,PNG,728,90,Draft,Premium Upgrade Lookalikes,upgrade;display,Ideogram 2.0,2026-05-06,79,0.67

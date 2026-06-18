@@ -1,0 +1,31 @@
+Slide size:
+1280x720.
+
+Background:
+White editorial one-pager with thin black section rules and pale blue workflow stage band.
+
+Typography:
+Aptos Display for title and section kickers. Aptos for body copy and labels.
+
+Palette:
+- Ink: #111111 for main text
+- Muted: #555555 for body text
+- Accent blue: #2563FF for section labels and highlights
+- Pale blue: #DFEAFF for workflow blocks
+- Support teal: #0F9F95 for selected proof accents
+- Hairline: #111111 at low widths
+
+Diagram grammar:
+Four horizontal chevron-like workflow stages with a pale blue fill and white separator notches. Each stage carries a concise title and two to three implementation bullets below.
+
+Container grammar:
+Use open layout and hairline rules. Avoid decorative cards except the workflow stage band.
+
+Identity assets:
+No official brand logo files found locally. Use plain text brand names only.
+
+QA gates:
+- All text must fit at 1280x720 render.
+- Workflow stage titles must remain readable at thumbnail size.
+- No fake quantitative metrics.
+- PowerPoint must export and render to PNG.

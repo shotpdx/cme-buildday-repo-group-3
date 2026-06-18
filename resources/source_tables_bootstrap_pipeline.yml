@@ -1,0 +1,32 @@
+resources:
+  pipelines:
+    source_tables_bootstrap:
+      name: "[${bundle.target}] Source Tables Bootstrap"
+
+      # Target catalog and schema for output tables
+      catalog: ${var.catalog}
+      target: media_demo
+
+      # Pipeline source code
+      libraries:
+        - file:
+            path: ../pipelines/source_tables_bootstrap.py
+
+      root_path: ../
+
+      serverless: true
+
+      # Pipeline configuration
+      configuration:
+        catalog: ${var.catalog}
+        schema: media_demo
+
+      continuous: false
+      development: true
+      photon: true
+
+      channel: current
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: "users"
